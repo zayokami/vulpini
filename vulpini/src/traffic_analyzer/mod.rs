@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
+#[derive(Clone)]
 pub struct TrafficStats {
     pub total_requests: u64,
     pub total_bytes_in: u64,

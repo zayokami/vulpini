@@ -2,6 +2,10 @@
 
 Advanced proxy server with intelligent traffic analysis and IP management.
 
+## Author
+
+- **zayoka**
+
 ## Project Structure
 
 ```

@@ -2,6 +2,8 @@
   "name": "vulpini-x",
   "version": "0.1.0",
   "description": "Vulpini X - Advanced Proxy Client",
+  "license": "GPL-3.0",
+  "author": "zayoka",
   "main": "dist/electron/main/index.js",
   "scripts": {
     "dev": "vite",
