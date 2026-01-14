@@ -7,6 +7,7 @@ pub mod protocol;
 pub mod config;
 pub mod logger;
 pub mod utils;
+pub mod api;
 
 pub use traffic_analyzer::{TrafficAnalyzer, TrafficStats};
 pub use ip_manager::{IPManager, IPInfo, RotationStrategy, HealthStatus};
@@ -16,6 +17,7 @@ pub use anomaly_detector::{AnomalyDetector, AnomalyEvent, AnomalyType};
 pub use config::{ConfigManager, ProxyConfig};
 pub use logger::{Logger, LogLevel, LogEntry};
 pub use protocol::{Socks5Protocol, HttpProtocol};
+pub use api::{ApiServer, ApiStats, ApiIP, ApiAnomaly};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const NAME: &str = "Vulpini";

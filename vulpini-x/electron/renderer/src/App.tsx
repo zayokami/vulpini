@@ -1,76 +1,105 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './App.css';
 
-interface ProxyStatus {
-  running: boolean;
-  connections: number;
-  requestsPerSecond: number;
-  bytesPerSecond: number;
-  avgLatency: string;
-  errorRate: number;
+interface ApiStats {
+  total_requests: number;
+  total_bytes_in: number;
+  total_bytes_out: number;
+  active_connections: number;
+  requests_per_second: number;
+  bytes_per_second: number;
+  avg_latency_ms: number;
+  error_rate: number;
 }
 
-interface IPInfo {
+interface ApiIP {
   address: string;
   port: number;
   country: string | null;
-  latency: string;
-  status: 'healthy' | 'degraded' | 'unhealthy';
+  isp: string | null;
+  latency_ms: number;
+  status: string;
 }
 
-interface LogEntry {
-  timestamp: string;
-  level: string;
-  message: string;
+interface ApiAnomaly {
+  id: string;
+  timestamp: number;
+  anomaly_type: string;
+  value: number;
+  threshold: number;
+  description: string;
+  severity: string;
+}
+
+declare global {
+  interface Window {
+    vulpiniAPI: {
+      getStats: () => Promise<{ success: boolean; data: ApiStats } | null>;
+      getIPs: () => Promise<{ success: boolean; data: ApiIP[] } | null>;
+      getAnomalies: () => Promise<{ success: boolean; data: ApiAnomaly[] } | null>;
+      getHealth: () => Promise<{ success: boolean; status: string } | null>;
+    };
+  }
 }
 
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'ips' | 'logs'>('dashboard');
-  const [status, setStatus] = useState<ProxyStatus>({
-    running: false,
-    connections: 0,
-    requestsPerSecond: 0,
-    bytesPerSecond: 0,
-    avgLatency: '0ms',
-    errorRate: 0,
+  const [isRunning, setIsRunning] = useState(false);
+  const [stats, setStats] = useState<ApiStats>({
+    total_requests: 0,
+    total_bytes_in: 0,
+    total_bytes_out: 0,
+    active_connections: 0,
+    requests_per_second: 0,
+    bytes_per_second: 0,
+    avg_latency_ms: 0,
+    error_rate: 0,
   });
-  const [ips, setIPs] = useState<IPInfo[]>([]);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [ips, setIPs] = useState<ApiIP[]>([]);
+  const [anomalies, setAnomalies] = useState<ApiAnomaly[]>([]);
   const [trafficHistory, setTrafficHistory] = useState<{time: string, requests: number}[]>([]);
   const [darkMode, setDarkMode] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setStatus(prev => ({
-        ...prev,
-        running: Math.random() > 0.3,
-        connections: Math.floor(Math.random() * 500) + 100,
-        requestsPerSecond: Math.random() * 100 + 50,
-        bytesPerSecond: Math.random() * 10000 + 5000,
-        avgLatency: `${Math.floor(Math.random() * 100) + 20}ms`,
-        errorRate: Math.random() * 0.05,
-      }));
-      
-      setIPs([
-        { address: '192.168.1.100', port: 1080, country: 'US', latency: '45ms', status: 'healthy' },
-        { address: '10.0.0.50', port: 1080, country: 'DE', latency: '89ms', status: 'healthy' },
-        { address: '172.16.0.25', port: 1080, country: 'JP', latency: '156ms', status: 'degraded' },
-        { address: '192.168.5.10', port: 1080, country: 'GB', latency: '67ms', status: 'healthy' },
-      ]);
-      
-      setLogs(prev => [
-        { timestamp: new Date().toLocaleTimeString(), level: 'INFO', message: 'Connection established' },
-        ...prev.slice(0, 99)
-      ]);
-      
-      setTrafficHistory(prev => {
-        const now = new Date().toLocaleTimeString();
-        const newData = [...prev, { time: now, requests: Math.floor(Math.random() * 100) + 50 }];
-        return newData.slice(-30);
-      });
-    }, 2000);
-    
+    const fetchData = async () => {
+      try {
+        const health = await window.vulpiniAPI.getHealth();
+        setIsRunning(health?.success === true);
+
+        if (health?.success) {
+          const statsData = await window.vulpiniAPI.getStats();
+          const ipsData = await window.vulpiniAPI.getIPs();
+          const anomaliesData = await window.vulpiniAPI.getAnomalies();
+
+          if (statsData?.success && statsData.data) {
+            setStats(statsData.data);
+            setTrafficHistory(prev => {
+              const now = new Date().toLocaleTimeString();
+              const newData = [...prev, { time: now, requests: Math.floor(statsData.data!.requests_per_second) }];
+              return newData.slice(-30);
+            });
+          }
+
+          if (ipsData?.success && ipsData.data) {
+            setIPs(ipsData.data);
+          }
+
+          if (anomaliesData?.success && anomaliesData.data) {
+            setAnomalies(anomaliesData.data);
+          }
+        }
+        setError(null);
+      } catch (err) {
+        setError('Failed to connect to backend');
+        setIsRunning(false);
+      }
+    };
+
+    const timer = setInterval(fetchData, 2000);
+    fetchData();
+
     return () => clearInterval(timer);
   }, []);
 
@@ -82,21 +111,21 @@ function App() {
           <span className="logo-subtitle">X</span>
         </div>
         <div className="header-actions">
-          <button 
+          <button
             className="btn-toggle"
             onClick={() => setDarkMode(!darkMode)}
           >
             {darkMode ? 'LIGHT' : 'DARK'}
           </button>
-          <button 
-            className={`btn ${status.running ? 'btn-stop' : 'btn-start'}`}
-            onClick={() => setStatus(prev => ({ ...prev, running: !prev.running }))}
+          <button
+            className={`btn ${isRunning ? 'btn-stop' : 'btn-start'}`}
+            onClick={() => setIsRunning(!isRunning)}
           >
-            {status.running ? 'STOP' : 'START'}
+            {isRunning ? 'STOP' : 'START'}
           </button>
         </div>
       </header>
-      
+
       <nav className="nav">
         {['dashboard', 'config', 'ips', 'logs'].map(tab => (
           <button
@@ -108,39 +137,45 @@ function App() {
           </button>
         ))}
       </nav>
-      
+
       <main className="main">
+        {error && (
+          <div className="error-banner">
+            {error}
+          </div>
+        )}
+
         {activeTab === 'dashboard' && (
           <div className="dashboard">
             <div className="stats-grid">
               <div className="stat-card">
                 <div className="stat-label">STATUS</div>
-                <div className={`stat-value ${status.running ? 'running' : 'stopped'}`}>
-                  {status.running ? 'RUNNING' : 'STOPPED'}
+                <div className={`stat-value ${isRunning ? 'running' : 'stopped'}`}>
+                  {isRunning ? 'RUNNING' : 'STOPPED'}
                 </div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">CONNECTIONS</div>
-                <div className="stat-value">{status.connections}</div>
+                <div className="stat-value">{stats.active_connections}</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">REQUESTS/S</div>
-                <div className="stat-value">{status.requestsPerSecond.toFixed(1)}</div>
+                <div className="stat-value">{stats.requests_per_second.toFixed(1)}</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">BYTES/S</div>
-                <div className="stat-value">{(status.bytesPerSecond / 1024).toFixed(1)} KB</div>
+                <div className="stat-value">{(stats.bytes_per_second / 1024).toFixed(1)} KB</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">AVG LATENCY</div>
-                <div className="stat-value">{status.avgLatency}</div>
+                <div className="stat-value">{stats.avg_latency_ms.toFixed(1)}ms</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">ERROR RATE</div>
-                <div className="stat-value">{(status.errorRate * 100).toFixed(2)}%</div>
+                <div className="stat-value">{(stats.error_rate * 100).toFixed(2)}%</div>
               </div>
             </div>
-            
+
             <div className="chart-container">
               <div className="chart-title">TRAFFIC OVERVIEW</div>
               <ResponsiveContainer width="100%" height={250}>
@@ -148,17 +183,17 @@ function App() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#444" />
                   <XAxis dataKey="time" stroke="#888" fontSize={10} />
                   <YAxis stroke="#888" fontSize={10} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#222', 
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#222',
                       border: '1px solid #555',
                       fontSize: '12px'
                     }}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="requests" 
-                    stroke="#00ff88" 
+                  <Line
+                    type="monotone"
+                    dataKey="requests"
+                    stroke="#00ff88"
                     strokeWidth={2}
                     dot={false}
                   />
@@ -167,7 +202,7 @@ function App() {
             </div>
           </div>
         )}
-        
+
         {activeTab === 'config' && (
           <div className="config-panel">
             <div className="config-section">
@@ -185,7 +220,7 @@ function App() {
                 <input type="number" defaultValue={1000} />
               </div>
             </div>
-            
+
             <div className="config-section">
               <div className="section-title">HTTP PROXY SETTINGS</div>
               <div className="form-group">
@@ -197,7 +232,7 @@ function App() {
                 <input type="number" defaultValue={8080} />
               </div>
             </div>
-            
+
             <div className="config-section">
               <div className="section-title">ROUTING</div>
               <div className="form-group">
@@ -213,11 +248,11 @@ function App() {
                 <input type="number" defaultValue={1000} />
               </div>
             </div>
-            
+
             <button className="btn btn-save">SAVE CONFIG</button>
           </div>
         )}
-        
+
         {activeTab === 'ips' && (
           <div className="ip-panel">
             <div className="section-title">IP POOL</div>
@@ -236,8 +271,8 @@ function App() {
                   <tr key={i}>
                     <td>{ip.address}</td>
                     <td>{ip.port}</td>
-                    <td>{ip.country}</td>
-                    <td>{ip.latency}</td>
+                    <td>{ip.country || '-'}</td>
+                    <td>{ip.latency_ms.toFixed(1)}ms</td>
                     <td>
                       <span className={`status-badge ${ip.status}`}>
                         {ip.status.toUpperCase()}
@@ -250,16 +285,16 @@ function App() {
             <button className="btn btn-add">ADD IP</button>
           </div>
         )}
-        
+
         {activeTab === 'logs' && (
           <div className="log-panel">
             <div className="section-title">SYSTEM LOGS</div>
             <div className="log-container">
-              {logs.map((log, i) => (
-                <div key={i} className={`log-entry ${log.level.toLowerCase()}`}>
-                  <span className="log-time">{log.timestamp}</span>
-                  <span className="log-level">[{log.level}]</span>
-                  <span className="log-message">{log.message}</span>
+              {anomalies.slice(0, 50).map((anomaly, i) => (
+                <div key={i} className={`log-entry ${anomaly.severity}`}>
+                  <span className="log-time">{new Date(anomaly.timestamp * 1000).toLocaleTimeString()}</span>
+                  <span className="log-level">[{anomaly.severity.toUpperCase()}]</span>
+                  <span className="log-message">{anomaly.description}</span>
                 </div>
               ))}
             </div>

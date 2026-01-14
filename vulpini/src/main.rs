@@ -11,6 +11,7 @@ use vulpini::anomaly_detector::AnomalyDetector;
 use vulpini::logger::Logger;
 use vulpini::protocol::socks5::Socks5Protocol;
 use vulpini::protocol::http::HttpProtocol;
+use vulpini::api::ApiServer;
 
 const DEFAULT_CONFIG_PATH: &str = "vulpini.toml";
 
@@ -136,9 +137,9 @@ async fn main() -> anyhow::Result<()> {
 
     let http_protocol = HttpProtocol::new(
         config.http_proxy.clone(),
-        traffic_analyzer,
-        behavior_monitor,
-        smart_router,
+        traffic_analyzer.clone(),
+        behavior_monitor.clone(),
+        smart_router.clone(),
     );
 
     let http_addr = format!("{}:{}", config.http_proxy.listen_address, config.http_proxy.listen_port);
@@ -150,7 +151,24 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    tokio::try_join!(socks5_task, http_task)?;
+    // Start API server for stats and control
+    let api_server = ApiServer::new(
+        traffic_analyzer.clone(),
+        ip_manager.clone(),
+        anomaly_detector.clone(),
+        "127.0.0.1".to_string(),
+        9090,
+    );
+
+    let api_task = tokio::spawn(async move {
+        if let Err(e) = api_server.start().await {
+            eprintln!("API server error: {}", e);
+        }
+    });
+
+    logger.info("API server listening on 127.0.0.1:9090");
+
+    tokio::try_join!(socks5_task, http_task, api_task)?;
 
     Ok(())
 }
