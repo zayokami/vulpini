@@ -1,0 +1,47 @@
+[package]
+name = "vulpini"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "1", features = ["full"] }
+rustls = "0.21"
+tokio-rustls = "0.24"
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+bytes = "1"
+log = "0.4"
+ahash = "0.8"
+dashmap = "6"
+parking_lot = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+thiserror = "2.0"
+anyhow = "1.0"
+once_cell = "1.19"
+mio = "0.8"
+crossbeam = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+rand = "0.8"
+
+[dev-dependencies]
+criterion = "0.5"
+proptest = "1.3"
+tempfile = "3.0"
+
+[[bin]]
+name = "vulpini"
+path = "src/main.rs"
+
+[lib]
+name = "vulpini"
+path = "src/lib.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
