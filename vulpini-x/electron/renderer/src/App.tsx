@@ -39,6 +39,9 @@ declare global {
       getIPs: () => Promise<{ success: boolean; data: ApiIP[] } | null>;
       getAnomalies: () => Promise<{ success: boolean; data: ApiAnomaly[] } | null>;
       getHealth: () => Promise<{ success: boolean; status: string } | null>;
+      reloadConfig: () => Promise<{ success: boolean; message?: string } | null>;
+      addIP: (data: { address: string; port: number; country: string | null; isp: string | null }) => Promise<{ success: boolean; message?: string } | null>;
+      deleteIP: (address: string) => Promise<{ success: boolean; message?: string } | null>;
     };
   }
 }
@@ -249,13 +252,73 @@ function App() {
               </div>
             </div>
 
-            <button className="btn btn-save">SAVE CONFIG</button>
+            <div className="button-group">
+              <button className="btn btn-save">SAVE CONFIG</button>
+              <button className="btn btn-reload" onClick={async () => {
+                const result = await window.vulpiniAPI.reloadConfig();
+                if (result?.success) {
+                  alert('Configuration reloaded successfully');
+                } else {
+                  alert('Failed to reload configuration');
+                }
+              }}>RELOAD CONFIG</button>
+            </div>
           </div>
         )}
 
         {activeTab === 'ips' && (
           <div className="ip-panel">
             <div className="section-title">IP POOL</div>
+
+            <div className="add-ip-form">
+              <div className="form-row">
+                <input
+                  type="text"
+                  placeholder="IP Address"
+                  id="new-ip-address"
+                />
+                <input
+                  type="number"
+                  placeholder="Port"
+                  defaultValue={1080}
+                  id="new-ip-port"
+                />
+                <input
+                  type="text"
+                  placeholder="Country (optional)"
+                  id="new-ip-country"
+                />
+                <input
+                  type="text"
+                  placeholder="ISP (optional)"
+                  id="new-ip-isp"
+                />
+                <button
+                  className="btn btn-add"
+                  onClick={async () => {
+                    const address = (document.getElementById('new-ip-address') as HTMLInputElement).value;
+                    const port = parseInt((document.getElementById('new-ip-port') as HTMLInputElement).value);
+                    const country = (document.getElementById('new-ip-country') as HTMLInputElement).value || null;
+                    const isp = (document.getElementById('new-ip-isp') as HTMLInputElement).value || null;
+
+                    if (!address) {
+                      alert('IP address is required');
+                      return;
+                    }
+
+                    const result = await window.vulpiniAPI.addIP({ address, port, country, isp });
+                    if (result?.success) {
+                      alert('IP added successfully');
+                    } else {
+                      alert('Failed to add IP');
+                    }
+                  }}
+                >
+                  ADD IP
+                </button>
+              </div>
+            </div>
+
             <table className="ip-table">
               <thead>
                 <tr>
@@ -264,6 +327,7 @@ function App() {
                   <th>COUNTRY</th>
                   <th>LATENCY</th>
                   <th>STATUS</th>
+                  <th>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
@@ -278,11 +342,27 @@ function App() {
                         {ip.status.toUpperCase()}
                       </span>
                     </td>
+                    <td>
+                      <button
+                        className="btn btn-delete"
+                        onClick={async () => {
+                          if (confirm(`Delete IP ${ip.address}?`)) {
+                            const result = await window.vulpiniAPI.deleteIP(ip.address);
+                            if (result?.success) {
+                              alert('IP deleted successfully');
+                            } else {
+                              alert('Failed to delete IP');
+                            }
+                          }
+                        }}
+                      >
+                        DELETE
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <button className="btn btn-add">ADD IP</button>
           </div>
         )}
 

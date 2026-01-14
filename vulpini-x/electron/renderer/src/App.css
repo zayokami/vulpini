@@ -112,6 +112,58 @@ body {
   margin-top: 16px;
 }
 
+.btn-reload {
+  background: var(--warning);
+  color: var(--bg-primary);
+  margin-left: 8px;
+}
+
+.btn-delete {
+  background: var(--error);
+  color: var(--bg-primary);
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.form-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.form-row input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.form-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.add-ip-form {
+  background: var(--bg-secondary);
+  padding: 16px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.ip-table th:last-child,
+.ip-table td:last-child {
+  width: 100px;
+  text-align: center;
+}
+
 .btn-toggle {
   background: transparent;
   border: 1px solid var(--border);

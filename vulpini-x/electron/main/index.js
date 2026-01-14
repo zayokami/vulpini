@@ -109,3 +109,33 @@ ipcMain.handle('get-anomalies', async () => {
 ipcMain.handle('get-health', async () => {
   return await fetchApi('/api/health');
 });
+
+ipcMain.handle('reload-config', async () => {
+  return await fetchApi('/api/config/reload', { method: 'POST' });
+});
+
+ipcMain.handle('add-ip', async (event, ipData) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/ips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ipData)
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('API Error: add-ip', error.message);
+    return null;
+  }
+});
+
+ipcMain.handle('delete-ip', async (event, address) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/ips/${encodeURIComponent(address)}`, {
+      method: 'DELETE'
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('API Error: delete-ip', error.message);
+    return null;
+  }
+});

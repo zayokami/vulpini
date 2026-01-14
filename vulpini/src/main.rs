@@ -85,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
         PathBuf::from(DEFAULT_CONFIG_PATH)
     };
 
-    let config_manager = ConfigManager::new(config_path.clone());
+    let mut config_manager = ConfigManager::new(config_path.clone());
     let config = config_manager.load_or_default().await?;
 
     logger.info(&format!("Configuration loaded from: {}", config_path.display()));
@@ -151,14 +151,16 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Start API server for stats and control
-    let api_server = ApiServer::new(
+    let config_manager_arc = Arc::new(Mutex::new(config_manager));
+
+    let mut api_server = ApiServer::new(
         traffic_analyzer.clone(),
         ip_manager.clone(),
         anomaly_detector.clone(),
         "127.0.0.1".to_string(),
         9090,
     );
+    api_server.set_config_manager(config_manager_arc.clone());
 
     let api_task = tokio::spawn(async move {
         if let Err(e) = api_server.start().await {

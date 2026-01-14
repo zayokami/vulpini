@@ -53,6 +53,7 @@ impl Socks5Protocol {
                     let behavior_monitor = self.behavior_monitor.clone();
                     let ip_manager = self.ip_manager.clone();
                     let smart_router = self.smart_router.clone();
+                    let config = self.config.clone();
 
                     tokio::spawn(async move {
                         let start = std::time::Instant::now();
@@ -60,6 +61,7 @@ impl Socks5Protocol {
                             socket,
                             peer_addr.to_string(),
                             start,
+                            config,
                             &traffic_analyzer,
                             &behavior_monitor,
                             &ip_manager,
@@ -80,6 +82,7 @@ impl Socks5Protocol {
         mut socket: TcpStream,
         peer_addr: String,
         start_time: std::time::Instant,
+        config: crate::config::Socks5Config,
         traffic_analyzer: &Arc<std::sync::Mutex<TrafficAnalyzer>>,
         behavior_monitor: &Arc<BehaviorMonitor>,
         _ip_manager: &Arc<std::sync::Mutex<IPManager>>,
@@ -96,7 +99,65 @@ impl Socks5Protocol {
             return Ok(());
         }
 
-        socket.write_all(&[SOCKS5_VERSION, 0x00]).await?;
+        let auth_enabled = config.auth_enabled;
+        let expected_username = config.username.as_deref();
+        let expected_password = config.password.as_deref();
+
+        if auth_enabled {
+            let method_count = buf[1] as usize;
+            let mut has_no_auth = false;
+            for i in 0..method_count {
+                if 2 + i < n as usize && buf[2 + i] == 0x02 {
+                    has_no_auth = true;
+                    break;
+                }
+            }
+
+            if !has_no_auth {
+                socket.write_all(&[SOCKS5_VERSION, 0xFF]).await?;
+                return Ok(());
+            }
+
+            socket.write_all(&[SOCKS5_VERSION, 0x02]).await?;
+
+            let n = socket.read(&mut buf).await.context("Failed to read auth")?;
+            if n < 5 || buf[0] != 0x01 {
+                socket.write_all(&[0x01, 0x01]).await?;
+                return Ok(());
+            }
+
+            let ulen = buf[1] as usize;
+            let plen = buf[2 + ulen] as usize;
+
+            if 2 + ulen + plen > n as usize {
+                socket.write_all(&[0x01, 0x01]).await?;
+                return Ok(());
+            }
+
+            let username = String::from_utf8_lossy(&buf[2..2 + ulen]).to_string();
+            let password = String::from_utf8_lossy(&buf[3 + ulen..3 + ulen + plen]).to_string();
+
+            let auth_ok = match (expected_username, expected_password) {
+                (Some(exp_user), Some(exp_pass)) =>
+                    username == exp_user && password == exp_pass,
+                (Some(exp_user), None) =>
+                    username == exp_user,
+                (None, Some(exp_pass)) =>
+                    password == exp_pass,
+                _ => true,
+            };
+
+            if auth_ok {
+                println!("[AUTH] Successful auth for user: {}", username);
+                socket.write_all(&[0x01, 0x00]).await?;
+            } else {
+                println!("[AUTH] Failed auth attempt for user: {}", username);
+                socket.write_all(&[0x01, 0x01]).await?;
+                return Ok(());
+            }
+        } else {
+            socket.write_all(&[SOCKS5_VERSION, 0x00]).await?;
+        }
 
         let n = socket.read(&mut buf).await.context("Failed to read request")?;
         if n < 4 {

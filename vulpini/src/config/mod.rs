@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
@@ -127,28 +129,58 @@ impl Default for ProxyConfig {
 
 pub struct ConfigManager {
     config_path: std::path::PathBuf,
+    config_tx: Arc<watch::Sender<ProxyConfig>>,
+    config_rx: watch::Receiver<ProxyConfig>,
 }
 
 impl ConfigManager {
     pub fn new(config_path: std::path::PathBuf) -> Self {
-        Self { config_path }
+        let (tx, rx) = watch::channel(ProxyConfig::default());
+        Self {
+            config_path,
+            config_tx: Arc::new(tx),
+            config_rx: rx,
+        }
     }
 
-    pub async fn load_or_default(&self) -> Result<ProxyConfig, std::io::Error> {
+    pub async fn load_or_default(&mut self) -> Result<ProxyConfig, std::io::Error> {
         if self.config_path.exists() {
             match tokio::fs::read_to_string(&self.config_path).await {
                 Ok(content) => {
-                    toml::from_str(&content).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+                    let config: ProxyConfig = toml::from_str(&content)
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                    self.config_tx.send(config.clone()).ok();
+                    Ok(config)
                 }
                 Err(e) => Err(e),
             }
         } else {
-            Ok(ProxyConfig::default())
+            let config = ProxyConfig::default();
+            self.config_tx.send(config.clone()).ok();
+            Ok(config)
         }
     }
 
     pub async fn save(&self, config: &ProxyConfig) -> Result<(), std::io::Error> {
-        let content = toml::to_string_pretty(config).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let content = toml::to_string_pretty(config)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         tokio::fs::write(&self.config_path, content).await
+    }
+
+    pub fn subscribe(&self) -> watch::Receiver<ProxyConfig> {
+        self.config_rx.clone()
+    }
+
+    pub fn reload(&mut self) -> Result<ProxyConfig, std::io::Error> {
+        if self.config_path.exists() {
+            let content = std::fs::read_to_string(&self.config_path)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            let config: ProxyConfig = toml::from_str(&content)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            self.config_tx.send(config.clone()).ok();
+            Ok(config)
+        } else {
+            Ok(ProxyConfig::default())
+        }
     }
 }
