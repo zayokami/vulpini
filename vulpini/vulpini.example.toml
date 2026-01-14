@@ -21,12 +21,24 @@ health_check_interval_secs = 60
 auto_rotate_interval_secs = 300
 strategy = "performance"
 
-# Add IP addresses like this:
-# [[ip_pool.ips]]
-# address = "192.168.1.100"
-# port = 1080
-# country = "US"
-# isp = "Example ISP"
+# Example IPs - uncomment and modify as needed
+[[ip_pool.ips]]
+address = "192.168.1.100"
+port = 1080
+country = "US"
+isp = "ExampleISP"
+
+[[ip_pool.ips]]
+address = "10.0.0.50"
+port = 1080
+country = "DE"
+isp = "EuroNet"
+
+[[ip_pool.ips]]
+address = "172.16.0.25"
+port = 1080
+country = "JP"
+isp = "AsiaConnect"
 
 [routing]
 max_latency_threshold_ms = 1000
