@@ -2,11 +2,10 @@ use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde::Serialize;
-use serde::Deserialize;
 use crate::traffic_analyzer::TrafficAnalyzer;
-use crate::ip_manager::IPManager;
+use crate::ip_manager::{IPManager, AddIPRequest, UpdateIPRequest};
 use crate::anomaly_detector::AnomalyDetector;
-use crate::config::{IPConfig, ConfigManager};
+use crate::config::ConfigManager;
 
 #[derive(Serialize, Clone)]
 pub struct ApiStats {
@@ -46,14 +45,6 @@ pub struct ApiLog {
     pub timestamp: u64,
     pub level: String,
     pub message: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct AddIPRequest {
-    pub address: String,
-    pub port: u16,
-    pub country: Option<String>,
-    pub isp: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -144,8 +135,14 @@ impl ApiServer {
             Self::get_ips(ip_manager)
         } else if request_line.starts_with("POST /api/ips") {
             Self::add_ip(ip_manager, &request_str)
+        } else if request_line.starts_with("PUT /api/ips/") {
+            Self::update_ip(ip_manager, request_line, &request_str)
+        } else if request_line.starts_with("PATCH /api/ips/") {
+            Self::toggle_ip(ip_manager, request_line)
         } else if request_line.starts_with("DELETE /api/ips/") {
             Self::delete_ip(ip_manager, request_line)
+        } else if request_line.starts_with("POST /api/ips/test-all") {
+            return Self::test_ip(socket, ip_manager).await;
         } else if request_line.starts_with("GET /api/anomalies") {
             Self::get_anomalies(anomaly_detector)
         } else if request_line.starts_with("GET /api/logs") {
@@ -189,23 +186,34 @@ impl ApiServer {
     }
 
     fn get_ips(ip_manager: &Arc<Mutex<IPManager>>) -> serde_json::Value {
-        let mut manager = ip_manager.lock().unwrap();
-        let ips = manager.select_ip();
+        let manager = ip_manager.lock().unwrap();
+        let ips = manager.get_all_ips();
 
-        let ip_list: Vec<serde_json::Value> = ips.map(|ip| {
+        let ip_list: Vec<serde_json::Value> = ips.iter().map(|ip| {
+            let stats = manager.get_ip_stats(&ip.address);
+
             serde_json::json!({
                 "address": ip.address,
                 "port": ip.port,
                 "country": ip.country,
                 "isp": ip.isp,
-                "latency_ms": ip.latency.as_secs_f64() * 1000.0,
-                "status": format!("{:?}", ip.health_status).to_lowercase()
+                "latency_ms": stats.as_ref().map(|s| s.latency_ms).unwrap_or(0.0),
+                "avg_latency_ms": stats.as_ref().map(|s| s.avg_latency_ms).unwrap_or(0.0),
+                "status": stats.as_ref()
+                    .map(|s| format!("{:?}", s.health_status).to_lowercase())
+                    .unwrap_or_else(|| "unknown".to_string()),
+                "enabled": stats.as_ref().map(|s| s.enabled).unwrap_or(true),
+                "total_uses": stats.as_ref().map(|s| s.total_uses).unwrap_or(0),
+                "success_count": stats.as_ref().map(|s| s.success_count).unwrap_or(0),
+                "failure_count": stats.as_ref().map(|s| s.failure_count).unwrap_or(0),
+                "use_count": stats.as_ref().map(|s| s.use_count).unwrap_or(0)
             })
-        }).into_iter().collect();
+        }).collect();
 
         serde_json::json!({
             "success": true,
-            "data": ip_list
+            "data": ip_list,
+            "total": ip_list.len()
         })
     }
 
@@ -214,16 +222,24 @@ impl ApiServer {
             let body = &request_str[body_start + 4..];
             if let Ok(req) = serde_json::from_str::<AddIPRequest>(body) {
                 let mut manager = ip_manager.lock().unwrap();
-                let config = IPConfig {
-                    address: req.address,
-                    port: req.port,
-                    country: req.country,
-                    isp: req.isp,
-                };
-                return serde_json::json!({
-                    "success": true,
-                    "message": "IP added successfully"
-                });
+                if manager.add_node(req.clone()) {
+                    return serde_json::json!({
+                        "success": true,
+                        "message": "Node added successfully",
+                        "data": {
+                            "address": req.address,
+                            "port": req.port,
+                            "country": req.country,
+                            "isp": req.isp,
+                            "enabled": req.enabled.unwrap_or(true)
+                        }
+                    });
+                } else {
+                    return serde_json::json!({
+                        "success": false,
+                        "error": "Node already exists"
+                    });
+                }
             }
         }
         serde_json::json!({
@@ -232,14 +248,124 @@ impl ApiServer {
         })
     }
 
+    fn update_ip(ip_manager: &Arc<Mutex<IPManager>>, request_line: &str, request_str: &str) -> serde_json::Value {
+        if let Some(addr_start) = request_line.find("/api/ips/") {
+            let address = &request_line[addr_start + 10..];
+            let address = address.trim_end_matches(" HTTP/1.1").trim();
+
+            if let Some(body_start) = request_str.find("\r\n\r\n") {
+                let body = &request_str[body_start + 4..];
+                if let Ok(req) = serde_json::from_str::<UpdateIPRequest>(body) {
+                    let mut manager = ip_manager.lock().unwrap();
+                    if manager.update_node(address, req) {
+                        return serde_json::json!({
+                            "success": true,
+                            "message": format!("Node {} updated", address)
+                        });
+                    } else {
+                        return serde_json::json!({
+                            "success": false,
+                            "error": "Node not found"
+                        });
+                    }
+                }
+            }
+        }
+        serde_json::json!({
+            "success": false,
+            "error": "Invalid request"
+        })
+    }
+
+    fn toggle_ip(ip_manager: &Arc<Mutex<IPManager>>, request_line: &str) -> serde_json::Value {
+        if let Some(addr_start) = request_line.find("/api/ips/") {
+            let address = &request_line[addr_start + 10..];
+            let address = address.trim_end_matches(" HTTP/1.1").trim();
+
+            let mut manager = ip_manager.lock().unwrap();
+            match manager.toggle_node(address) {
+                Some(enabled) => serde_json::json!({
+                    "success": true,
+                    "message": format!("Node {} {}", address, if enabled { "enabled" } else { "disabled" }),
+                    "enabled": enabled
+                }),
+                None => serde_json::json!({
+                    "success": false,
+                    "error": "Node not found"
+                }),
+            }
+        } else {
+            serde_json::json!({
+                "success": false,
+                "error": "Invalid request"
+            })
+        }
+    }
+
+    async fn test_ip(
+        mut socket: TcpStream,
+        ip_manager: &Arc<Mutex<IPManager>>,
+    ) -> anyhow::Result<()> {
+        let ips = {
+            let manager = ip_manager.lock().unwrap();
+            manager.get_all_ips()
+        };
+
+        let mut results = Vec::new();
+
+        for ip in &ips {
+            let target = format!("{}:{}", ip.address, ip.port);
+            let start = std::time::Instant::now();
+            let result = tokio::net::TcpStream::connect(&target).await;
+            let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+            results.push(serde_json::json!({
+                "address": ip.address,
+                "port": ip.port,
+                "latency_ms": latency_ms,
+                "success": result.is_ok()
+            }));
+        }
+
+        let response = serde_json::json!({
+            "success": true,
+            "data": results
+        });
+
+        let response_str = serde_json::to_string(&response)?;
+        let response_body = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            response_str.len(),
+            response_str
+        );
+        socket.write_all(response_body.as_bytes()).await?;
+        Ok(())
+    }
+
+    fn test_ip_info(ip_manager: &Arc<Mutex<IPManager>>, request_line: &str) -> serde_json::Value {
+        serde_json::json!({
+            "success": true,
+            "message": "Use POST /api/ips/test-all to test all nodes"
+        })
+    }
+
     fn delete_ip(ip_manager: &Arc<Mutex<IPManager>>, request_line: &str) -> serde_json::Value {
         if let Some(addr_start) = request_line.find("/api/ips/") {
             let address = &request_line[addr_start + 10..];
             let address = address.trim_end_matches(" HTTP/1.1").trim();
-            return serde_json::json!({
-                "success": true,
-                "message": format!("IP {} deleted", address)
-            });
+
+            let mut manager = ip_manager.lock().unwrap();
+            if manager.remove_node(address) {
+                return serde_json::json!({
+                    "success": true,
+                    "message": format!("IP {} deleted", address)
+                });
+            } else {
+                return serde_json::json!({
+                    "success": false,
+                    "error": "Node not found"
+                });
+            }
         }
         serde_json::json!({
             "success": false,
