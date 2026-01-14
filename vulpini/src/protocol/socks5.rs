@@ -85,7 +85,7 @@ impl Socks5Protocol {
         config: crate::config::Socks5Config,
         traffic_analyzer: &Arc<std::sync::Mutex<TrafficAnalyzer>>,
         behavior_monitor: &Arc<BehaviorMonitor>,
-        _ip_manager: &Arc<std::sync::Mutex<IPManager>>,
+        ip_manager: &Arc<std::sync::Mutex<IPManager>>,
         smart_router: &Arc<std::sync::Mutex<SmartRouter>>,
     ) -> Result<()> {
         let mut buf = [0u8; 262];
@@ -181,14 +181,29 @@ impl Socks5Protocol {
 
         socket.write_all(&[0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00]).await?;
 
+        // Get upstream proxy if available
+        let upstream_addr = {
+            let manager = ip_manager.lock().unwrap();
+            if manager.is_empty() {
+                None
+            } else {
+                manager.get_proxy_endpoint()
+            }
+        };
+
         let connect_start = std::time::Instant::now();
-        let connect_result = TcpStream::connect(format!("{}:{}", target_addr, target_port)).await;
+        let connect_result = if let Some(upstream) = upstream_addr {
+            // Connect through upstream proxy
+            TcpStream::connect(&upstream).await
+        } else {
+            // Direct connection
+            TcpStream::connect(format!("{}:{}", target_addr, target_port)).await
+        };
         let connect_latency = connect_start.elapsed();
 
         let mut upstream = match connect_result {
             Ok(u) => u,
             Err(e) => {
-                // Record failed connection
                 let latency = start_time.elapsed();
                 {
                     let mut analyzer = traffic_analyzer.lock().unwrap();
@@ -206,7 +221,7 @@ impl Socks5Protocol {
                     router.record_result(&target_addr, false, latency);
                 }
 
-                return Err(e).context("Failed to connect to target");
+                return Err(e).context("Failed to connect");
             }
         };
 
