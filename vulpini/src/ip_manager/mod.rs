@@ -88,7 +88,7 @@ impl IPManager {
         if self.ip_pool.is_empty() {
             return None;
         }
-        
+
         let selected = match self.config.strategy.as_str() {
             "random" => self.select_random(),
             "roundrobin" => self.select_round_robin(),
@@ -96,8 +96,28 @@ impl IPManager {
             "performance" => self.select_performance_based(),
             _ => self.select_round_robin(),
         };
-        
+
         Some(selected)
+    }
+
+    /// Get all IPs in the pool
+    pub fn get_all_ips(&self) -> Vec<Arc<IPInfo>> {
+        self.ip_pool.clone()
+    }
+
+    /// Get the first available proxy endpoint as string (address:port)
+    pub fn get_proxy_endpoint(&self) -> Option<String> {
+        self.ip_pool.first().map(|ip| format!("{}:{}", ip.address, ip.port))
+    }
+
+    /// Check if IP pool is empty
+    pub fn is_empty(&self) -> bool {
+        self.ip_pool.is_empty()
+    }
+
+    /// Get total number of IPs
+    pub fn len(&self) -> usize {
+        self.ip_pool.len()
     }
 
     pub fn record_result(&self, ip: &str, success: bool, latency: Duration) {
