@@ -1,0 +1,61 @@
+[socks5]
+enabled = true
+listen_address = "127.0.0.1"
+listen_port = 1080
+auth_enabled = false
+username = ""
+password = ""
+max_connections = 1000
+
+[http_proxy]
+enabled = true
+listen_address = "127.0.0.1"
+listen_port = 8080
+auth_enabled = false
+username = ""
+password = ""
+max_connections = 1000
+
+[ip_pool]
+health_check_interval_secs = 60
+auto_rotate_interval_secs = 300
+strategy = "performance"
+
+# Example IPs - uncomment and modify as needed
+[[ip_pool.ips]]
+address = "192.168.1.100"
+port = 1080
+country = "US"
+isp = "ExampleISP"
+
+[[ip_pool.ips]]
+address = "10.0.0.50"
+port = 1080
+country = "DE"
+isp = "EuroNet"
+
+[[ip_pool.ips]]
+address = "172.16.0.25"
+port = 1080
+country = "JP"
+isp = "AsiaConnect"
+
+[routing]
+max_latency_threshold_ms = 1000
+min_reliability_threshold = 0.8
+load_balancing = "fastest"
+fallback_enabled = true
+
+[anomaly_detection]
+enabled = true
+spike_threshold = 3.0
+latency_threshold_ms = 5000
+error_rate_threshold = 0.1
+connection_threshold = 500
+check_interval_secs = 10
+
+[logging]
+level = "info"
+file_enabled = true
+file_path = "vulpini.log"
+console_enabled = true

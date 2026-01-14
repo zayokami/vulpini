@@ -1,10 +1,12 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let mainWindow = null;
 let rustProcess = null;
 
 const API_BASE_URL = 'http://127.0.0.1:9090';
+const VITE_DEV_URL = 'http://localhost:5173';
 
 async function fetchApi(endpoint) {
   try {
@@ -20,30 +22,29 @@ async function fetchApi(endpoint) {
 }
 
 async function startRustBackend() {
-  const rustPath = path.join(__dirname, '../../vulpini/target/release/vulpini.exe');
-  
+  const rustPath = path.join(__dirname, '../../../vulpini/target/release/vulpini.exe');
+
   try {
     const { spawn } = require('child_process');
     rustProcess = spawn(rustPath, [], {
-      cwd: path.join(__dirname, '../../vulpini'),
+      cwd: path.join(__dirname, '../../../vulpini'),
       stdio: 'pipe'
     });
-    
+
     rustProcess.stdout.on('data', (data) => {
       console.log(`[Rust] ${data}`);
     });
-    
+
     rustProcess.stderr.on('data', (data) => {
       console.error(`[Rust Error] ${data}`);
     });
-    
+
     rustProcess.on('close', (code) => {
       console.log(`Rust process exited with code ${code}`);
     });
-    
-    // Wait for API server to be ready
+
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
+
   } catch (error) {
     console.error('Failed to start Rust backend:', error);
   }
@@ -61,26 +62,28 @@ function createWindow() {
     frame: true,
     titleBarStyle: 'default'
   });
-  
-  mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
-  
+
+  if (process.env.NODE_ENV === 'development' || !fs.existsSync(path.join(__dirname, '../../dist/index.html'))) {
+    mainWindow.loadURL(VITE_DEV_URL);
+    // mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
+  }
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
-  
-  mainWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(async () => {
   createWindow();
-  
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
-  
-  // Start Rust backend
+
   await startRustBackend();
 });
 
@@ -93,26 +96,11 @@ app.on('window-all-closed', () => {
   }
 });
 
-// IPC handlers for stats
-ipcMain.handle('get-stats', async () => {
-  return await fetchApi('/api/stats');
-});
-
-ipcMain.handle('get-ips', async () => {
-  return await fetchApi('/api/ips');
-});
-
-ipcMain.handle('get-anomalies', async () => {
-  return await fetchApi('/api/anomalies');
-});
-
-ipcMain.handle('get-health', async () => {
-  return await fetchApi('/api/health');
-});
-
-ipcMain.handle('reload-config', async () => {
-  return await fetchApi('/api/config/reload', { method: 'POST' });
-});
+ipcMain.handle('get-stats', async () => fetchApi('/api/stats'));
+ipcMain.handle('get-ips', async () => fetchApi('/api/ips'));
+ipcMain.handle('get-anomalies', async () => fetchApi('/api/anomalies'));
+ipcMain.handle('get-health', async () => fetchApi('/api/health'));
+ipcMain.handle('reload-config', async () => fetchApi('/api/config/reload', { method: 'POST' }));
 
 ipcMain.handle('add-ip', async (event, ipData) => {
   try {
