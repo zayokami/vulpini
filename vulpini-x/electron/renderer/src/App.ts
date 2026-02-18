@@ -1,35 +1,5 @@
 import './styles.css';
-
-interface ApiStats {
-  total_requests: number;
-  total_bytes_in: number;
-  total_bytes_out: number;
-  active_connections: number;
-  requests_per_second: number;
-  bytes_per_second: number;
-  avg_latency_ms: number;
-  error_rate: number;
-}
-
-interface ApiIP {
-  address: string;
-  port: number;
-  country: string | null;
-  isp: string | null;
-  latency_ms: number;
-  status: string;
-  enabled: boolean;
-}
-
-interface ApiAnomaly {
-  id: string;
-  timestamp: number;
-  anomaly_type: string;
-  value: number;
-  threshold: number;
-  description: string;
-  severity: string;
-}
+import type { TrafficStats as ApiStats, IPInfo as ApiIP, AnomalyEvent as ApiAnomaly } from '@shared/types';
 
 const api = {
   async getStats(): Promise<ApiStats | null> {
@@ -195,19 +165,21 @@ class VulpiniApp {
     const dashboard = create('div', { class: 'dashboard' });
     const statsGrid = create('div', { class: 'stats-grid' });
 
-    const items = [
-      { label: 'STATUS', value: this.isRunning ? 'RUNNING' : 'STOPPED', valueClass: this.isRunning ? 'running' : 'stopped' },
-      { label: 'CONNECTIONS', value: String(this.stats.active_connections) },
-      { label: 'REQUESTS/S', value: this.stats.requests_per_second.toFixed(1) },
-      { label: 'BYTES/S', value: `${(this.stats.bytes_per_second / 1024).toFixed(1)} KB` },
-      { label: 'AVG LATENCY', value: `${this.stats.avg_latency_ms.toFixed(1)}ms` },
-      { label: 'ERROR RATE', value: `${(this.stats.error_rate * 100).toFixed(2)}%` }
+    const items: { label: string; value: string; valueClass: string; id: string }[] = [
+      { label: 'STATUS', value: this.isRunning ? 'RUNNING' : 'STOPPED', valueClass: this.isRunning ? 'running' : 'stopped', id: '' },
+      { label: 'CONNECTIONS', value: String(this.stats.active_connections), valueClass: '', id: 'stat-connections' },
+      { label: 'REQUESTS/S', value: this.stats.requests_per_second.toFixed(1), valueClass: '', id: 'stat-requests' },
+      { label: 'BYTES/S', value: `${(this.stats.bytes_per_second / 1024).toFixed(1)} KB`, valueClass: '', id: 'stat-bytes' },
+      { label: 'AVG LATENCY', value: `${this.stats.avg_latency_ms.toFixed(1)}ms`, valueClass: '', id: 'stat-latency' },
+      { label: 'ERROR RATE', value: `${(this.stats.error_rate * 100).toFixed(2)}%`, valueClass: '', id: 'stat-errors' }
     ];
 
     for (const item of items) {
       const card = create('div', { class: 'stat-card' });
       card.appendChild(create('div', { class: 'stat-label' }, [item.label]));
-      card.appendChild(create('div', { class: `stat-value ${item.valueClass || ''}` }, [item.value]));
+      const valueEl = create('div', { class: `stat-value ${item.valueClass}`.trim() }, [item.value]);
+      if (item.id) valueEl.id = item.id;
+      card.appendChild(valueEl);
       statsGrid.appendChild(card);
     }
     dashboard.appendChild(statsGrid);
@@ -218,6 +190,19 @@ class VulpiniApp {
     dashboard.appendChild(chartContainer);
 
     return dashboard;
+  }
+
+  updateDashboard(): void {
+    const setText = (id: string, text: string) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    setText('stat-connections', String(this.stats.active_connections));
+    setText('stat-requests', this.stats.requests_per_second.toFixed(1));
+    setText('stat-bytes', `${(this.stats.bytes_per_second / 1024).toFixed(1)} KB`);
+    setText('stat-latency', `${this.stats.avg_latency_ms.toFixed(1)}ms`);
+    setText('stat-errors', `${(this.stats.error_rate * 100).toFixed(2)}%`);
+    this.drawChart();
   }
 
   createConfig(): Element {
@@ -274,8 +259,16 @@ class VulpiniApp {
       create('th', {}, ['STATUS']),
       create('th', {}, ['ACTIONS'])
     ])]));
+    table.appendChild(create('tbody', { id: 'ip-list' }));
+    panel.appendChild(table);
 
-    const tbody = create('tbody', { id: 'ip-list' });
+    return panel;
+  }
+
+  updateIPTable(): void {
+    const tbody = document.getElementById('ip-list');
+    if (!tbody) return;
+    tbody.innerHTML = '';
     for (const ip of this.ips) {
       const tr = create('tr');
       tr.appendChild(create('td', {}, [ip.address]));
@@ -283,30 +276,42 @@ class VulpiniApp {
       tr.appendChild(create('td', {}, [ip.country || '-']));
       tr.appendChild(create('td', {}, [`${ip.latency_ms.toFixed(1)}ms`]));
       tr.appendChild(create('td', {}, [create('span', { class: `status-badge ${ip.status}` }, [ip.status.toUpperCase()])]));
-      tr.appendChild(create('td', {}, [create('button', { class: 'btn btn-delete', 'data-address': ip.address }, ['DELETE'])]));
+      const deleteBtn = create('button', { class: 'btn btn-delete', 'data-address': ip.address }, ['DELETE']);
+      deleteBtn.addEventListener('click', async () => {
+        if (!confirm(`Delete IP ${ip.address}?`)) return;
+        const result = await api.deleteIP(ip.address);
+        if (result?.success) {
+          this.ips = await api.getIPs();
+          this.updateIPTable();
+        } else {
+          alert('Failed to delete IP');
+        }
+      });
+      tr.appendChild(create('td', {}, [deleteBtn]));
       tbody.appendChild(tr);
     }
-    table.appendChild(tbody);
-    panel.appendChild(table);
-
-    return panel;
   }
 
   createLogs(): Element {
     const panel = create('div', { class: 'log-panel' });
     panel.appendChild(create('div', { class: 'section-title' }, ['SYSTEM LOGS']));
+    panel.appendChild(create('div', { class: 'log-container', id: 'log-list' }));
+    return panel;
+  }
 
-    const logContainer = create('div', { class: 'log-container', id: 'log-list' });
+  updateLogs(): void {
+    const container = document.getElementById('log-list');
+    if (!container) return;
+    container.innerHTML = '';
     for (const anomaly of this.anomalies.slice(0, 50)) {
+      const secsAgo = anomaly.timestamp;
+      const timeStr = secsAgo < 60 ? `${secsAgo}s ago` : `${Math.floor(secsAgo / 60)}m ago`;
       const entry = create('div', { class: `log-entry ${anomaly.severity}` });
-      entry.appendChild(create('span', { class: 'log-time' }, [new Date(anomaly.timestamp * 1000).toLocaleTimeString()]));
+      entry.appendChild(create('span', { class: 'log-time' }, [timeStr]));
       entry.appendChild(create('span', { class: 'log-level' }, [`[${anomaly.severity.toUpperCase()}]`]));
       entry.appendChild(create('span', { class: 'log-message' }, [anomaly.description]));
-      logContainer.appendChild(entry);
+      container.appendChild(entry);
     }
-    panel.appendChild(logContainer);
-
-    return panel;
   }
 
   bindEvents(): void {
@@ -350,28 +355,19 @@ class VulpiniApp {
       if (result?.success) {
         alert('IP added successfully');
         this.ips = await api.getIPs();
-        this.render();
-        this.bindEvents();
+        this.updateIPTable();
       } else {
         alert('Failed to add IP');
       }
     });
 
-    document.querySelectorAll('.btn-delete').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const address = (e.target as HTMLElement).dataset.address;
-        if (!address || !confirm(`Delete IP ${address}?`)) return;
+    if (this.activeTab === 'ips') {
+      this.updateIPTable();
+    }
 
-        const result = await api.deleteIP(address);
-        if (result?.success) {
-          this.ips = await api.getIPs();
-          this.render();
-          this.bindEvents();
-        } else {
-          alert('Failed to delete IP');
-        }
-      });
-    });
+    if (this.activeTab === 'logs') {
+      this.updateLogs();
+    }
   }
 
   async startUpdateLoop(): Promise<void> {
@@ -394,19 +390,17 @@ class VulpiniApp {
 
         if (this.activeTab === 'ips') {
           this.ips = await api.getIPs();
-          this.render();
-          this.bindEvents();
+          this.updateIPTable();
         }
 
         if (this.activeTab === 'logs') {
           this.anomalies = await api.getAnomalies();
-          this.render();
-          this.bindEvents();
+          this.updateLogs();
         }
       }
 
       if (this.activeTab === 'dashboard') {
-        this.drawChart();
+        this.updateDashboard();
       }
 
       setTimeout(update, 2000);

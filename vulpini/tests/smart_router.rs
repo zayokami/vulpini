@@ -30,7 +30,7 @@ mod tests {
 
     #[test]
     fn test_add_target() {
-        let mut config = create_test_config();
+        let config = create_test_config();
         let mut router = SmartRouter::new(config.clone());
 
         router.add_target("192.168.1.1", 1080);

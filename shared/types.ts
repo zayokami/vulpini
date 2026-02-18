@@ -80,11 +80,7 @@ export interface TrafficStats {
   active_connections: number;
   requests_per_second: number;
   bytes_per_second: number;
-  avg_latency: number;
-  p50_latency: number;
-  p95_latency: number;
-  p99_latency: number;
-  error_count: number;
+  avg_latency_ms: number;
   error_rate: number;
 }
 
@@ -93,8 +89,14 @@ export interface IPInfo {
   port: number;
   country: string | null;
   isp: string | null;
-  latency: number;
-  status: 'healthy' | 'degraded' | 'unhealthy';
+  latency_ms: number;
+  avg_latency_ms: number;
+  status: string;
+  enabled: boolean;
+  total_uses: number;
+  success_count: number;
+  failure_count: number;
+  use_count: number;
 }
 
 export interface LogEntry {
@@ -105,10 +107,10 @@ export interface LogEntry {
 
 export interface AnomalyEvent {
   id: string;
-  timestamp: string;
-  type: string;
+  timestamp: number;
+  anomaly_type: string;
   value: number;
   threshold: number;
   description: string;
-  severity: 'low' | 'medium' | 'high';
+  severity: string;
 }
