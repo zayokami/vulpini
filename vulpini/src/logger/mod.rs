@@ -1,6 +1,6 @@
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -57,9 +57,8 @@ impl LogFile {
         
         let log_line = format!("[{}] [{}] {}\n", timestamp, level_str, message);
         
-        if let Ok(mut file) = self.file.lock() {
-            let _ = file.write_all(log_line.as_bytes());
-        }
+        let mut file = self.file.lock();
+        let _ = file.write_all(log_line.as_bytes());
     }
 }
 

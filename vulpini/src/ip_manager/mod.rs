@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use serde::{Serialize, Deserialize};
@@ -239,13 +240,30 @@ impl IPManager {
 
     /// Update a node
     pub fn update_node(&mut self, address: &str, req: UpdateIPRequest) -> bool {
-        // IPInfo fields are immutable config, can't be updated after creation
-        // Only NodeState mutable fields can be updated
-        if let Some(mut state) = self.node_states.get_mut(address) {
-            // Only update enabled status through toggle_node, not here
-            return true;
+        let idx = match self.ip_pool.iter().position(|ip| ip.address == address) {
+            Some(i) => i,
+            None => return false,
+        };
+
+        // Update IPInfo if any field changed
+        if req.port.is_some() || req.country.is_some() || req.isp.is_some() {
+            let old = &self.ip_pool[idx];
+            self.ip_pool[idx] = Arc::new(IPInfo {
+                address: old.address.clone(),
+                port: req.port.unwrap_or(old.port),
+                country: req.country.or_else(|| old.country.clone()),
+                isp: req.isp.or_else(|| old.isp.clone()),
+            });
         }
-        false
+
+        // Update enabled status
+        if let Some(enabled) = req.enabled {
+            if let Some(mut state) = self.node_states.get_mut(address) {
+                state.enabled = enabled;
+            }
+        }
+
+        true
     }
 
     /// Toggle node enabled status
@@ -313,7 +331,7 @@ impl IPManager {
 
     fn select_round_robin(&self) -> Arc<IPInfo> {
         for _ in 0..self.ip_pool.len() {
-            let mut current = self.current_index.lock().unwrap();
+            let mut current = self.current_index.lock();
             *current = (*current + 1) % self.ip_pool.len();
             let index = *current;
             drop(current);

@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 use std::time::Duration;
 use std::path::PathBuf;
 
@@ -24,7 +25,7 @@ async fn ip_health_check_task(
         tokio::time::sleep(interval).await;
 
         let (ip_address, ip_port): (String, u16) = {
-            let mut manager = ip_manager.lock().unwrap();
+            let mut manager = ip_manager.lock();
             if let Some(ip_ref) = manager.select_ip() {
                 (ip_ref.address.clone(), ip_ref.port)
             } else {
@@ -38,7 +39,7 @@ async fn ip_health_check_task(
         let latency = start.elapsed();
 
         let success = result.is_ok();
-        let manager = ip_manager.lock().unwrap();
+        let manager = ip_manager.lock();
         manager.record_result(&ip_address, success, latency);
     }
 }
@@ -53,11 +54,11 @@ async fn anomaly_check_task(
         tokio::time::sleep(interval).await;
 
         let stats: vulpini::traffic_analyzer::TrafficStats = {
-            let analyzer = traffic_analyzer.lock().unwrap();
+            let analyzer = traffic_analyzer.lock();
             analyzer.get_stats().clone()
         };
 
-        let mut detector = anomaly_detector.lock().unwrap();
+        let mut detector = anomaly_detector.lock();
         let events = detector.detect(
             stats.requests_per_second,
             stats.avg_latency,
@@ -65,9 +66,9 @@ async fn anomaly_check_task(
             stats.active_connections as u32,
         );
 
-            for event in events {
-                println!("[ANOMALY] {:?} - {}", event.severity, event.description);
-            }
+        for event in events {
+            println!("[ANOMALY] {:?} - {}", event.severity, event.description);
+        }
     }
 }
 

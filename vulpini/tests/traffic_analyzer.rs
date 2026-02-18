@@ -36,6 +36,7 @@ mod tests {
             size: 1024,
             latency: Duration::from_millis(50),
             protocol: "http".to_string(),
+            success: true,
         };
 
         analyzer.record_request(request);
@@ -57,6 +58,7 @@ mod tests {
             size: 100,
             latency: Duration::from_millis(10),
             protocol: "http".to_string(),
+            success: true,
         };
         analyzer.record_request(request);
 
@@ -85,6 +87,7 @@ mod tests {
                 size: i * 100,
                 latency: Duration::from_millis(i * 10),
                 protocol: "socks5".to_string(),
+                success: true,
             };
             analyzer.record_request(request);
         }
@@ -101,6 +104,7 @@ mod tests {
             size: 512,
             latency: Duration::from_millis(25),
             protocol: "http".to_string(),
+            success: true,
         };
 
         assert_eq!(request.size, 512);
@@ -141,6 +145,7 @@ mod tests {
                 size: 100,
                 latency: Duration::from_millis(10),
                 protocol: "http".to_string(),
+            success: true,
             };
             analyzer.record_request(request);
         }
@@ -160,18 +165,21 @@ mod tests {
                 size: 100,
                 latency: Duration::from_millis(10),
                 protocol: "http".to_string(),
+            success: true,
             },
             RequestInfo {
                 timestamp: Instant::now(),
                 size: 200,
                 latency: Duration::from_millis(20),
                 protocol: "http".to_string(),
+            success: true,
             },
             RequestInfo {
                 timestamp: Instant::now(),
                 size: 300,
                 latency: Duration::from_millis(30),
                 protocol: "http".to_string(),
+            success: true,
             },
         ];
 

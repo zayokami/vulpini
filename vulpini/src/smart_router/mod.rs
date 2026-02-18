@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 use std::time::Duration;
 use crate::config::RoutingConfig;
 
@@ -117,19 +118,18 @@ impl SmartRouter {
 
     pub fn record_result(&mut self, ip: &str, success: bool, latency: Duration) {
         if let Some(index) = self.targets.iter().position(|t| t.ip == ip) {
-            if let Ok(mut stats) = self.target_stats[index].lock() {
-                stats.total_requests += 1;
-                stats.total_latency += latency;
-                
-                if success {
-                    stats.successful_requests += 1;
-                }
+            let mut stats = self.target_stats[index].lock();
+            stats.total_requests += 1;
+            stats.total_latency += latency;
+
+            if success {
+                stats.successful_requests += 1;
             }
         }
     }
 
     fn round_robin_select(&self, available_indices: &[usize]) -> usize {
-        let mut current = self.current_index.lock().unwrap();
+        let mut current = self.current_index.lock();
         *current = (*current + 1) % self.targets.len();
         let index = *current;
         drop(current);
@@ -147,7 +147,7 @@ impl SmartRouter {
             .min_by_key(|&&i| {
                 self.target_stats
                     .get(i)
-                    .map(|s| s.lock().map(|st| st.current_connections).unwrap_or(0))
+                    .map(|s| s.lock().current_connections)
                     .unwrap_or(0)
             })
             .copied()

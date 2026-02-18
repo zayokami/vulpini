@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde::Serialize;
@@ -169,7 +170,7 @@ impl ApiServer {
     }
 
     fn get_stats(traffic_analyzer: &Arc<Mutex<TrafficAnalyzer>>) -> serde_json::Value {
-        let stats = traffic_analyzer.lock().unwrap().get_stats().clone();
+        let stats = traffic_analyzer.lock().get_stats().clone();
         serde_json::json!({
             "success": true,
             "data": {
@@ -186,7 +187,7 @@ impl ApiServer {
     }
 
     fn get_ips(ip_manager: &Arc<Mutex<IPManager>>) -> serde_json::Value {
-        let manager = ip_manager.lock().unwrap();
+        let manager = ip_manager.lock();
         let ips = manager.get_all_ips();
 
         let ip_list: Vec<serde_json::Value> = ips.iter().map(|ip| {
@@ -221,7 +222,7 @@ impl ApiServer {
         if let Some(body_start) = request_str.find("\r\n\r\n") {
             let body = &request_str[body_start + 4..];
             if let Ok(req) = serde_json::from_str::<AddIPRequest>(body) {
-                let mut manager = ip_manager.lock().unwrap();
+                let mut manager = ip_manager.lock();
                 if manager.add_node(req.clone()) {
                     return serde_json::json!({
                         "success": true,
@@ -256,7 +257,7 @@ impl ApiServer {
             if let Some(body_start) = request_str.find("\r\n\r\n") {
                 let body = &request_str[body_start + 4..];
                 if let Ok(req) = serde_json::from_str::<UpdateIPRequest>(body) {
-                    let mut manager = ip_manager.lock().unwrap();
+                    let mut manager = ip_manager.lock();
                     if manager.update_node(address, req) {
                         return serde_json::json!({
                             "success": true,
@@ -282,7 +283,7 @@ impl ApiServer {
             let address = &request_line[addr_start + 10..];
             let address = address.trim_end_matches(" HTTP/1.1").trim();
 
-            let mut manager = ip_manager.lock().unwrap();
+            let mut manager = ip_manager.lock();
             match manager.toggle_node(address) {
                 Some(enabled) => serde_json::json!({
                     "success": true,
@@ -307,7 +308,7 @@ impl ApiServer {
         ip_manager: &Arc<Mutex<IPManager>>,
     ) -> anyhow::Result<()> {
         let ips = {
-            let manager = ip_manager.lock().unwrap();
+            let manager = ip_manager.lock();
             manager.get_all_ips()
         };
 
@@ -342,19 +343,12 @@ impl ApiServer {
         Ok(())
     }
 
-    fn test_ip_info(ip_manager: &Arc<Mutex<IPManager>>, request_line: &str) -> serde_json::Value {
-        serde_json::json!({
-            "success": true,
-            "message": "Use POST /api/ips/test-all to test all nodes"
-        })
-    }
-
     fn delete_ip(ip_manager: &Arc<Mutex<IPManager>>, request_line: &str) -> serde_json::Value {
         if let Some(addr_start) = request_line.find("/api/ips/") {
             let address = &request_line[addr_start + 10..];
             let address = address.trim_end_matches(" HTTP/1.1").trim();
 
-            let mut manager = ip_manager.lock().unwrap();
+            let mut manager = ip_manager.lock();
             if manager.remove_node(address) {
                 return serde_json::json!({
                     "success": true,
@@ -374,7 +368,7 @@ impl ApiServer {
     }
 
     fn get_anomalies(anomaly_detector: &Arc<Mutex<AnomalyDetector>>) -> serde_json::Value {
-        let detector = anomaly_detector.lock().unwrap();
+        let detector = anomaly_detector.lock();
         let events = detector.get_event_history();
 
         let event_list: Vec<serde_json::Value> = events.iter().map(|e| {
@@ -405,7 +399,7 @@ impl ApiServer {
 
     fn reload_config(config_manager: Option<&Arc<Mutex<ConfigManager>>>) -> serde_json::Value {
         if let Some(cm) = config_manager {
-            let mut manager = cm.lock().unwrap();
+            let mut manager = cm.lock();
             match manager.reload() {
                 Ok(_) => serde_json::json!({
                     "success": true,
@@ -453,7 +447,7 @@ impl ApiServer {
     }
 
     fn generate_pac(ip_manager: &Arc<Mutex<IPManager>>) -> String {
-        let manager = ip_manager.lock().unwrap();
+        let manager = ip_manager.lock();
 
         let socks5_addr = manager.get_proxy_endpoint().unwrap_or_else(|| "127.0.0.1:1080".to_string());
 

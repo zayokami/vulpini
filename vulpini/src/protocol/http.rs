@@ -10,17 +10,17 @@ use crate::smart_router::SmartRouter;
 
 pub struct HttpProtocol {
     config: HttpProxyConfig,
-    traffic_analyzer: Arc<std::sync::Mutex<TrafficAnalyzer>>,
+    traffic_analyzer: Arc<parking_lot::Mutex<TrafficAnalyzer>>,
     behavior_monitor: Arc<BehaviorMonitor>,
-    smart_router: Arc<std::sync::Mutex<SmartRouter>>,
+    smart_router: Arc<parking_lot::Mutex<SmartRouter>>,
 }
 
 impl HttpProtocol {
     pub fn new(
         config: HttpProxyConfig,
-        traffic_analyzer: Arc<std::sync::Mutex<TrafficAnalyzer>>,
+        traffic_analyzer: Arc<parking_lot::Mutex<TrafficAnalyzer>>,
         behavior_monitor: Arc<BehaviorMonitor>,
-        smart_router: Arc<std::sync::Mutex<SmartRouter>>,
+        smart_router: Arc<parking_lot::Mutex<SmartRouter>>,
     ) -> Self {
         Self {
             config,
@@ -68,13 +68,32 @@ impl HttpProtocol {
         }
     }
 
+    /// Parse "GET http://host:port/path HTTP/1.1" into (host, port, path)
+    fn parse_http_url(request_str: &str) -> Option<(String, u16, String)> {
+        let first_line = request_str.lines().next()?;
+        let url = first_line.split_whitespace().nth(1)?;
+        let rest = url.strip_prefix("http://")?;
+
+        let (host_port, path) = match rest.find('/') {
+            Some(i) => (&rest[..i], rest[i..].to_string()),
+            None => (rest, "/".to_string()),
+        };
+
+        let (host, port) = match host_port.rsplit_once(':') {
+            Some((h, p)) => (h.to_string(), p.parse::<u16>().unwrap_or(80)),
+            None => (host_port.to_string(), 80),
+        };
+
+        Some((host, port, path))
+    }
+
     async fn handle_connection(
         mut socket: TcpStream,
         peer_addr: String,
         start_time: std::time::Instant,
-        traffic_analyzer: &Arc<std::sync::Mutex<TrafficAnalyzer>>,
+        traffic_analyzer: &Arc<parking_lot::Mutex<TrafficAnalyzer>>,
         behavior_monitor: &Arc<BehaviorMonitor>,
-        smart_router: &Arc<std::sync::Mutex<SmartRouter>>,
+        smart_router: &Arc<parking_lot::Mutex<SmartRouter>>,
     ) -> Result<()> {
         let mut buf = [0u8; 8192];
 
@@ -83,12 +102,13 @@ impl HttpProtocol {
                 Ok(0) => {
                     // Record final stats before disconnect
                     let latency = start_time.elapsed();
-                    let mut analyzer = traffic_analyzer.lock().unwrap();
+                    let mut analyzer = traffic_analyzer.lock();
                     analyzer.record_request(RequestInfo {
                         timestamp: start_time,
                         size: 0,
                         latency,
                         protocol: "http".to_string(),
+                        success: true,
                     });
                     return Ok(());
                 }
@@ -109,7 +129,7 @@ impl HttpProtocol {
 
                                     // Record router stats
                                     {
-                                        let mut router = smart_router.lock().unwrap();
+                                        let mut router = smart_router.lock();
                                         router.record_result(&target, true, connect_latency);
                                     }
 
@@ -128,31 +148,39 @@ impl HttpProtocol {
 
                                     // Record traffic
                                     {
-                                        let mut analyzer = traffic_analyzer.lock().unwrap();
+                                        let mut analyzer = traffic_analyzer.lock();
                                         analyzer.record_request(RequestInfo {
                                             timestamp: start_time,
                                             size: n as u64,
                                             latency: connect_latency,
                                             protocol: "http".to_string(),
+                                            success: true,
                                         });
                                     }
 
-                                    tokio::io::copy_bidirectional(&mut socket, &mut upstream).await?;
+                                    let (client_to_server, server_to_client) =
+                                        tokio::io::copy_bidirectional(&mut socket, &mut upstream).await?;
+
+                                    {
+                                        let mut analyzer = traffic_analyzer.lock();
+                                        analyzer.record_bytes(server_to_client, client_to_server);
+                                    }
                                 }
                                 Err(e) => {
                                     // Record failed connection
                                     let latency = connect_start.elapsed();
                                     {
-                                        let mut router = smart_router.lock().unwrap();
+                                        let mut router = smart_router.lock();
                                         router.record_result(&target, false, latency);
                                     }
                                     {
-                                        let mut analyzer = traffic_analyzer.lock().unwrap();
+                                        let mut analyzer = traffic_analyzer.lock();
                                         analyzer.record_request(RequestInfo {
                                             timestamp: start_time,
                                             size: n as u64,
                                             latency,
                                             protocol: "http".to_string(),
+                                            success: false,
                                         });
                                     }
 
@@ -163,8 +191,76 @@ impl HttpProtocol {
                         } else {
                             socket.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n").await?;
                         }
+                    } else if let Some(target_info) = Self::parse_http_url(&request_str) {
+                        // Regular HTTP proxy request (GET, POST, etc.)
+                        let (host, port, path) = target_info;
+                        let target = format!("{}:{}", host, port);
+                        let connect_start = std::time::Instant::now();
+
+                        match TcpStream::connect(&target).await {
+                            Ok(mut upstream) => {
+                                let connect_latency = connect_start.elapsed();
+
+                                {
+                                    let mut router = smart_router.lock();
+                                    router.record_result(&target, true, connect_latency);
+                                }
+
+                                // Rewrite request: absolute URL → relative path
+                                let first_line = request_str.lines().next().unwrap_or("");
+                                let method = first_line.split_whitespace().next().unwrap_or("GET");
+                                let rewritten_line = format!("{} {} HTTP/1.1\r\n", method, path);
+
+                                // Get headers after first line, inject Connection: close
+                                let rest = match request_str.find("\r\n") {
+                                    Some(i) => &request_str[i + 2..],
+                                    None => "",
+                                };
+                                let with_close = match rest.find("\r\n\r\n") {
+                                    Some(i) => format!("{}Connection: close\r\n{}", &rest[..i + 2], &rest[i + 2..]),
+                                    None => format!("Connection: close\r\n\r\n"),
+                                };
+
+                                upstream.write_all(rewritten_line.as_bytes()).await?;
+                                upstream.write_all(with_close.as_bytes()).await?;
+
+                                // Relay response back
+                                tokio::io::copy(&mut upstream, &mut socket).await?;
+
+                                // Record behavior
+                                let behavior_record = BehaviorRecord {
+                                    session_id: uuid::Uuid::new_v4().to_string(),
+                                    timestamp: start_time,
+                                    action_type: ActionType::Request,
+                                    duration: connect_latency,
+                                    target: target.clone(),
+                                    success: true,
+                                };
+                                behavior_monitor.record_action(&peer_addr, &behavior_record);
+
+                                {
+                                    let mut analyzer = traffic_analyzer.lock();
+                                    analyzer.record_request(RequestInfo {
+                                        timestamp: start_time,
+                                        size: n as u64,
+                                        latency: connect_start.elapsed(),
+                                        protocol: "http".to_string(),
+                                        success: true,
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                let latency = connect_start.elapsed();
+                                {
+                                    let mut router = smart_router.lock();
+                                    router.record_result(&target, false, latency);
+                                }
+                                socket.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n").await?;
+                                println!("Failed to connect to {}: {}", target, e);
+                            }
+                        }
                     } else {
-                        socket.write_all(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n").await?;
+                        socket.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n").await?;
                     }
                 }
                 Err(e) => {

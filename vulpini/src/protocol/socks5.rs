@@ -13,19 +13,19 @@ const SOCKS5_VERSION: u8 = 0x05;
 
 pub struct Socks5Protocol {
     config: Socks5Config,
-    traffic_analyzer: Arc<std::sync::Mutex<TrafficAnalyzer>>,
+    traffic_analyzer: Arc<parking_lot::Mutex<TrafficAnalyzer>>,
     behavior_monitor: Arc<BehaviorMonitor>,
-    ip_manager: Arc<std::sync::Mutex<IPManager>>,
-    smart_router: Arc<std::sync::Mutex<SmartRouter>>,
+    ip_manager: Arc<parking_lot::Mutex<IPManager>>,
+    smart_router: Arc<parking_lot::Mutex<SmartRouter>>,
 }
 
 impl Socks5Protocol {
     pub fn new(
         config: Socks5Config,
-        traffic_analyzer: Arc<std::sync::Mutex<TrafficAnalyzer>>,
+        traffic_analyzer: Arc<parking_lot::Mutex<TrafficAnalyzer>>,
         behavior_monitor: Arc<BehaviorMonitor>,
-        ip_manager: Arc<std::sync::Mutex<IPManager>>,
-        smart_router: Arc<std::sync::Mutex<SmartRouter>>,
+        ip_manager: Arc<parking_lot::Mutex<IPManager>>,
+        smart_router: Arc<parking_lot::Mutex<SmartRouter>>,
     ) -> Self {
         Self {
             config,
@@ -83,10 +83,10 @@ impl Socks5Protocol {
         peer_addr: String,
         start_time: std::time::Instant,
         config: crate::config::Socks5Config,
-        traffic_analyzer: &Arc<std::sync::Mutex<TrafficAnalyzer>>,
+        traffic_analyzer: &Arc<parking_lot::Mutex<TrafficAnalyzer>>,
         behavior_monitor: &Arc<BehaviorMonitor>,
-        ip_manager: &Arc<std::sync::Mutex<IPManager>>,
-        smart_router: &Arc<std::sync::Mutex<SmartRouter>>,
+        ip_manager: &Arc<parking_lot::Mutex<IPManager>>,
+        smart_router: &Arc<parking_lot::Mutex<SmartRouter>>,
     ) -> Result<()> {
         let mut buf = [0u8; 262];
 
@@ -105,15 +105,15 @@ impl Socks5Protocol {
 
         if auth_enabled {
             let method_count = buf[1] as usize;
-            let mut has_no_auth = false;
+            let mut supports_userpass = false;
             for i in 0..method_count {
-                if 2 + i < n as usize && buf[2 + i] == 0x02 {
-                    has_no_auth = true;
+                if 2 + i < n && buf[2 + i] == 0x02 {
+                    supports_userpass = true;
                     break;
                 }
             }
 
-            if !has_no_auth {
+            if !supports_userpass {
                 socket.write_all(&[SOCKS5_VERSION, 0xFF]).await?;
                 return Ok(());
             }
@@ -165,25 +165,31 @@ impl Socks5Protocol {
         }
 
         let atyp = buf[3];
-        let target_port = u16::from_be_bytes([buf[8], buf[9]]);
 
-        let target_addr = if atyp == 0x01 {
-            format!("{}.{}.{}.{}", buf[4], buf[5], buf[6], buf[7])
+        let (target_addr, target_port) = if atyp == 0x01 {
+            // IPv4: [IP(4)] [PORT(2)]
+            if n < 10 {
+                return Ok(());
+            }
+            let addr = format!("{}.{}.{}.{}", buf[4], buf[5], buf[6], buf[7]);
+            let port = u16::from_be_bytes([buf[8], buf[9]]);
+            (addr, port)
         } else if atyp == 0x03 {
+            // Domain: [LEN(1)] [DOMAIN(LEN)] [PORT(2)]
             let domain_len = buf[4] as usize;
             if n < 5 + domain_len + 2 {
                 return Ok(());
             }
-            String::from_utf8_lossy(&buf[5..5 + domain_len]).to_string()
+            let addr = String::from_utf8_lossy(&buf[5..5 + domain_len]).to_string();
+            let port = u16::from_be_bytes([buf[5 + domain_len], buf[5 + domain_len + 1]]);
+            (addr, port)
         } else {
             return Ok(());
         };
 
-        socket.write_all(&[0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00]).await?;
-
         // Get upstream proxy if available
         let upstream_addr = {
-            let manager = ip_manager.lock().unwrap();
+            let manager = ip_manager.lock();
             if manager.is_empty() {
                 None
             } else {
@@ -193,31 +199,37 @@ impl Socks5Protocol {
 
         let connect_start = std::time::Instant::now();
         let connect_result = if let Some(upstream) = upstream_addr {
-            // Connect through upstream proxy
             TcpStream::connect(&upstream).await
         } else {
-            // Direct connection
             TcpStream::connect(format!("{}:{}", target_addr, target_port)).await
         };
         let connect_latency = connect_start.elapsed();
 
         let mut upstream = match connect_result {
-            Ok(u) => u,
+            Ok(u) => {
+                // Success reply: VER(1) REP(1) RSV(1) ATYP(1) ADDR(4) PORT(2) = 10 bytes
+                socket.write_all(&[0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).await?;
+                u
+            }
             Err(e) => {
+                // Failure reply: REP=0x05 (connection refused)
+                socket.write_all(&[0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).await?;
+
                 let latency = start_time.elapsed();
                 {
-                    let mut analyzer = traffic_analyzer.lock().unwrap();
+                    let mut analyzer = traffic_analyzer.lock();
                     analyzer.record_request(RequestInfo {
                         timestamp: start_time,
                         size: n as u64,
                         latency,
                         protocol: "socks5".to_string(),
+                        success: false,
                     });
                     analyzer.record_bytes(n as u64, 0);
                 }
 
                 {
-                    let mut router = smart_router.lock().unwrap();
+                    let mut router = smart_router.lock();
                     router.record_result(&target_addr, false, latency);
                 }
 
@@ -229,7 +241,7 @@ impl Socks5Protocol {
 
         // Record successful connection through router
         {
-            let mut router = smart_router.lock().unwrap();
+            let mut router = smart_router.lock();
             router.record_result(&target, true, connect_latency);
         }
 
@@ -246,21 +258,23 @@ impl Socks5Protocol {
 
         // Record traffic stats
         {
-            let mut analyzer = traffic_analyzer.lock().unwrap();
+            let mut analyzer = traffic_analyzer.lock();
             analyzer.record_request(RequestInfo {
                 timestamp: start_time,
                 size: n as u64,
                 latency: start_time.elapsed(),
                 protocol: "socks5".to_string(),
+                success: true,
             });
         }
 
-        tokio::io::copy_bidirectional(&mut socket, &mut upstream).await?;
+        let (client_to_server, server_to_client) =
+            tokio::io::copy_bidirectional(&mut socket, &mut upstream).await?;
 
-        // Record bytes out
+        // Record actual bytes transferred
         {
-            let mut analyzer = traffic_analyzer.lock().unwrap();
-            analyzer.record_bytes(0, n as u64);
+            let mut analyzer = traffic_analyzer.lock();
+            analyzer.record_bytes(server_to_client, client_to_server);
         }
 
         Ok(())

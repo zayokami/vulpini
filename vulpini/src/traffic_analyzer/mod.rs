@@ -22,6 +22,7 @@ pub struct RequestInfo {
     pub size: u64,
     pub latency: Duration,
     pub protocol: String,
+    pub success: bool,
 }
 
 impl Default for TrafficStats {
@@ -122,7 +123,7 @@ impl TrafficAnalyzer {
         let total_bytes = recent_requests.iter().map(|r| r.size).sum::<u64>();
         let total_latency: Duration = recent_requests.iter().map(|r| r.latency).sum::<Duration>();
         
-        let errors = recent_requests.iter().filter(|r| r.latency > Duration::from_secs(10)).count();
+        let errors = recent_requests.iter().filter(|r| !r.success).count();
         
         self.current_stats.total_requests = total_requests;
         self.current_stats.total_bytes_in = self.byte_history.iter().filter(|(_, _, is_in)| *is_in).map(|(_, bytes, _)| *bytes).sum::<u64>();
