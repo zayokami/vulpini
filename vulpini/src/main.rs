@@ -141,6 +141,7 @@ async fn main() -> anyhow::Result<()> {
         traffic_analyzer.clone(),
         behavior_monitor.clone(),
         smart_router.clone(),
+        ip_manager.clone(),
     );
 
     let http_addr = format!("{}:{}", config.http_proxy.listen_address, config.http_proxy.listen_port);
