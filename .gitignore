@@ -36,3 +36,8 @@ pnpm-debug.log*
 # Temporary
 *.tmp
 *.temp
+
+# Tauri
+vulpini-x/src-tauri/target/
+vulpini-x/src-tauri/gen/
+vulpini-x/src-tauri/binaries/

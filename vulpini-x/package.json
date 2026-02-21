@@ -4,39 +4,15 @@
   "description": "Vulpini X - Advanced Proxy Client",
   "license": "GPL-3.0",
   "author": "zayoka",
-  "main": "electron/main/index.js",
+  "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"wait-on http://localhost:5173 && npm run electron\"",
-    "dev:server": "vite",
+    "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview",
-    "electron": "electron .",
-    "electron:dev": "concurrently \"npm run dev:server\" \"wait-on http://localhost:5173 && npm run electron\""
+    "tauri": "tauri"
   },
-  "dependencies": {},
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1",
-    "concurrently": "^9.2.1",
-    "wait-on": "^9.0.3"
-  },
-  "build": {
-    "appId": "com.vulpini.x",
-    "productName": "Vulpini X",
-    "directories": {
-      "output": "dist-electron"
-    },
-    "files": [
-      "dist/**/*",
-      "!**/node_modules/**"
-    ],
-    "win": {
-      "target": "nsis",
-      "icon": "resources/icon.ico"
-    },
-    "mac": {
-      "target": "dmg",
-      "icon": "resources/icon.icns"
-    }
+    "@tauri-apps/cli": "^2",
+    "typescript": "^5",
+    "vite": "^6"
   }
 }
