@@ -24,23 +24,26 @@ async fn ip_health_check_task(
     loop {
         tokio::time::sleep(interval).await;
 
-        let (ip_address, ip_port): (String, u16) = {
+        // Snapshot all IPs so we don't hold the lock during TCP connects.
+        let ips: Vec<(String, u16)> = {
             let manager = ip_manager.lock();
-            if let Some(ip_ref) = manager.select_ip() {
-                (ip_ref.address.clone(), ip_ref.port)
-            } else {
-                continue;
-            }
+            manager.get_all_ips().iter()
+                .map(|ip| (ip.address.clone(), ip.port))
+                .collect()
         };
 
-        let target = format!("{}:{}", ip_address, ip_port);
-        let start = std::time::Instant::now();
-        let result = tokio::net::TcpStream::connect(&target).await;
-        let latency = start.elapsed();
+        for (address, port) in ips {
+            let target = format!("{}:{}", address, port);
+            let start = std::time::Instant::now();
+            let result = tokio::time::timeout(
+                Duration::from_secs(5),
+                tokio::net::TcpStream::connect(&target),
+            ).await;
+            let latency = start.elapsed();
 
-        let success = result.is_ok();
-        let manager = ip_manager.lock();
-        manager.record_result(&ip_address, success, latency);
+            let success = matches!(result, Ok(Ok(_)));
+            ip_manager.lock().record_result(&address, success, latency);
+        }
     }
 }
 
@@ -185,7 +188,16 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    tokio::try_join!(socks5_task, http_task, api_task)?;
+    logger.info("All servers running. Press Ctrl+C to stop.");
+
+    tokio::select! {
+        _ = socks5_task => eprintln!("SOCKS5 server exited unexpectedly"),
+        _ = http_task => eprintln!("HTTP proxy server exited unexpectedly"),
+        _ = api_task => eprintln!("API server exited unexpectedly"),
+        _ = tokio::signal::ctrl_c() => {
+            logger.info("Shutdown signal received, exiting...");
+        }
+    }
 
     Ok(())
 }

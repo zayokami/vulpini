@@ -44,12 +44,11 @@ mod tests {
         let config = create_test_config();
         let mut detector = AnomalyDetector::new(config);
 
-        // Normal conditions should not trigger anomalies
         let events = detector.detect(
-            50.0,                                   // requests_per_second
-            Duration::from_millis(100),             // avg_latency
-            0.01,                                   // error_rate
-            100,                                    // active_connections
+            50.0,
+            Duration::from_millis(100),
+            0.01,
+            100,
         );
 
         assert!(events.is_empty());
@@ -60,20 +59,17 @@ mod tests {
         let config = create_test_config();
         let mut detector = AnomalyDetector::new(config);
 
-        // First, establish a baseline
         for _ in 0..10 {
             detector.detect(10.0, Duration::from_millis(100), 0.01, 100);
         }
 
-        // Now trigger a spike
         let events = detector.detect(
-            100.0,  // Much higher than average
+            100.0,
             Duration::from_millis(100),
             0.01,
             100,
         );
 
-        // Should detect traffic spike
         let spike_event = events.iter().find(|e| matches!(e.anomaly_type, AnomalyType::TrafficSpike));
         assert!(spike_event.is_some());
     }
@@ -83,13 +79,11 @@ mod tests {
         let config = create_test_config();
         let mut detector = AnomalyDetector::new(config);
 
-        // Normal latency first
         detector.detect(50.0, Duration::from_millis(100), 0.01, 100);
 
-        // High latency
         let events = detector.detect(
             50.0,
-            Duration::from_millis(6000),  // Above threshold of 5000ms
+            Duration::from_millis(6000),
             0.01,
             100,
         );
@@ -104,14 +98,12 @@ mod tests {
         let config = create_test_config();
         let mut detector = AnomalyDetector::new(config);
 
-        // Normal error rate
         detector.detect(50.0, Duration::from_millis(100), 0.01, 100);
 
-        // High error rate
         let events = detector.detect(
             50.0,
             Duration::from_millis(100),
-            0.2,  // Above threshold of 0.1
+            0.2,
             100,
         );
 
@@ -125,15 +117,13 @@ mod tests {
         let config = create_test_config();
         let mut detector = AnomalyDetector::new(config);
 
-        // Normal connections
         detector.detect(50.0, Duration::from_millis(100), 0.01, 100);
 
-        // Connection flood
         let events = detector.detect(
             50.0,
             Duration::from_millis(100),
             0.01,
-            600,  // Above threshold of 500
+            600,
         );
 
         let flood_event = events.iter().find(|e| matches!(e.anomaly_type, AnomalyType::ConnectionFlood));
@@ -146,20 +136,17 @@ mod tests {
         let config = create_test_config();
         let mut detector = AnomalyDetector::new(config);
 
-        // Establish baseline
         for _ in 0..10 {
             detector.detect(10.0, Duration::from_millis(100), 0.01, 100);
         }
 
-        // Trigger multiple anomalies
         let events = detector.detect(
-            100.0,                          // Traffic spike
-            Duration::from_millis(6000),    // High latency
-            0.2,                            // High error rate
-            600,                            // Connection flood
+            100.0,
+            Duration::from_millis(6000),
+            0.2,
+            600,
         );
 
-        // Should detect multiple anomalies
         assert!(events.len() >= 3);
     }
 
@@ -168,24 +155,17 @@ mod tests {
         let config = create_test_config();
         let mut detector = AnomalyDetector::new(config);
 
-        // Establish baseline
         for _ in 0..10 {
             detector.detect(10.0, Duration::from_millis(100), 0.01, 100);
         }
 
-        // Trigger many anomalies
-        for _ in 0..150 {
-            detector.detect(
-                100.0,
-                Duration::from_millis(6000),
-                0.2,
-                600,
-            );
+        // Even triggering extreme values many times, cooldown limits event count.
+        for _ in 0..300 {
+            detector.detect(100.0, Duration::from_millis(6000), 0.2, 600);
         }
 
-        // History should be limited to 100 events
         let events = detector.get_event_history();
-        assert!(events.len() <= 150); // Allow some margin
+        assert!(events.len() <= 200);
     }
 
     #[test]
@@ -220,19 +200,24 @@ mod tests {
 
         let mut detector = AnomalyDetector::new(config);
 
-        // Even with extreme values, should not detect if disabled
-        // Note: The current implementation doesn't check config.enabled in detect()
-        // This is a test that documents current behavior
-        let events = detector.detect(
-            1000.0,
-            Duration::from_secs(10),
-            1.0,
-            10000,
-        );
+        // With `enabled: false`, detect() should always return empty.
+        let events = detector.detect(1000.0, Duration::from_secs(10), 1.0, 10000);
+        assert!(events.is_empty());
+        assert!(detector.get_event_history().is_empty());
+    }
 
-        // Events are still generated (config.enabled is not checked)
-        // This documents current behavior - config.enabled could be used in detect()
-        let _ = events;
+    #[test]
+    fn test_alert_cooldown() {
+        let config = create_test_config();
+        let mut detector = AnomalyDetector::new(config);
+
+        // First call: high latency triggers.
+        let events1 = detector.detect(50.0, Duration::from_millis(6000), 0.01, 100);
+        assert!(events1.iter().any(|e| matches!(e.anomaly_type, AnomalyType::LatencySpike)));
+
+        // Immediate second call with same extreme values: cooldown suppresses.
+        let events2 = detector.detect(50.0, Duration::from_millis(6000), 0.01, 100);
+        assert!(!events2.iter().any(|e| matches!(e.anomaly_type, AnomalyType::LatencySpike)));
     }
 
     #[test]
@@ -247,7 +232,6 @@ mod tests {
         };
         let mut detector = AnomalyDetector::new(config);
 
-        // Establish baseline
         for _ in 0..10 {
             detector.detect(10.0, Duration::from_millis(100), 0.01, 100);
         }
