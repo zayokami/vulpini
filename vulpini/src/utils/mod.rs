@@ -54,14 +54,12 @@ pub fn format_bytes(bytes: u64) -> String {
 }
 
 pub fn generate_session_id() -> String {
-    use rand::Rng;
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     const LENGTH: usize = 32;
-    
-    let mut rng = rand::thread_rng();
+
     let session_id: String = (0..LENGTH)
         .map(|_| {
-            let idx = rng.gen_range(0..CHARSET.len());
+            let idx = rand::random_range(0..CHARSET.len());
             CHARSET[idx] as char
         })
         .collect();

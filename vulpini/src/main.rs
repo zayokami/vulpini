@@ -12,7 +12,7 @@ use vulpini::anomaly_detector::AnomalyDetector;
 use vulpini::logger::Logger;
 use vulpini::protocol::socks5::Socks5Protocol;
 use vulpini::protocol::http::HttpProtocol;
-use vulpini::api::ApiServer;
+use vulpini::api::{AppState, api_router};
 
 const DEFAULT_CONFIG_PATH: &str = "vulpini.toml";
 
@@ -118,6 +118,18 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Periodic session cleanup (runs every 60s)
+    {
+        let bm = behavior_monitor.clone();
+        tokio::spawn(async move {
+            let interval = Duration::from_secs(60);
+            loop {
+                tokio::time::sleep(interval).await;
+                bm.cleanup_stale_sessions();
+            }
+        });
+    }
+
     // Create protocols with shared components
     let socks5_protocol = Socks5Protocol::new(
         config.socks5.clone(),
@@ -155,22 +167,23 @@ async fn main() -> anyhow::Result<()> {
 
     let config_manager_arc = Arc::new(Mutex::new(config_manager));
 
-    let mut api_server = ApiServer::new(
-        traffic_analyzer.clone(),
-        ip_manager.clone(),
-        anomaly_detector.clone(),
-        "127.0.0.1".to_string(),
-        9090,
-    );
-    api_server.set_config_manager(config_manager_arc.clone());
+    let api_state = AppState {
+        traffic_analyzer: traffic_analyzer.clone(),
+        ip_manager: ip_manager.clone(),
+        anomaly_detector: anomaly_detector.clone(),
+        config_manager: config_manager_arc.clone(),
+        start_time: std::time::Instant::now(),
+    };
+
+    let api_addr = "127.0.0.1:9090";
+    let api_listener = tokio::net::TcpListener::bind(api_addr).await?;
+    logger.info(&format!("API server listening on {}", api_addr));
 
     let api_task = tokio::spawn(async move {
-        if let Err(e) = api_server.start().await {
+        if let Err(e) = axum::serve(api_listener, api_router(api_state)).await {
             eprintln!("API server error: {}", e);
         }
     });
-
-    logger.info("API server listening on 127.0.0.1:9090");
 
     tokio::try_join!(socks5_task, http_task, api_task)?;
 

@@ -324,8 +324,7 @@ impl IPManager {
             return self.ip_pool[0].clone();
         }
 
-        let mut rng = rand::thread_rng();
-        let idx = rand::Rng::gen_range(&mut rng, 0..healthy_ips.len());
+        let idx = rand::random_range(0..healthy_ips.len());
         healthy_ips[idx].clone()
     }
 

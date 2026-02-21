@@ -17,7 +17,7 @@ pub use anomaly_detector::{AnomalyDetector, AnomalyEvent, AnomalyType};
 pub use config::{ConfigManager, ProxyConfig};
 pub use logger::{Logger, LogLevel, LogEntry};
 pub use protocol::{Socks5Protocol, HttpProtocol};
-pub use api::{ApiServer, ApiStats, ApiIP, ApiAnomaly};
+pub use api::{AppState, api_router};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const NAME: &str = "Vulpini";
