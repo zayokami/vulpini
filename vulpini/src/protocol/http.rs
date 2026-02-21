@@ -395,3 +395,200 @@ impl HttpProtocol {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── decode_base64 ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_decode_base64_simple() {
+        // "hello" = "aGVsbG8="
+        let decoded = HttpProtocol::decode_base64("aGVsbG8=").unwrap();
+        assert_eq!(decoded, b"hello");
+    }
+
+    #[test]
+    fn test_decode_base64_with_colon() {
+        // "user:pass" = "dXNlcjpwYXNz"
+        let decoded = HttpProtocol::decode_base64("dXNlcjpwYXNz").unwrap();
+        assert_eq!(decoded, b"user:pass");
+    }
+
+    #[test]
+    fn test_decode_base64_empty() {
+        let decoded = HttpProtocol::decode_base64("").unwrap();
+        assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn test_decode_base64_invalid() {
+        assert!(HttpProtocol::decode_base64("!!!").is_none());
+    }
+
+    // ── check_proxy_auth ────────────────────────────────────────────────────
+
+    fn make_config(auth_enabled: bool, user: Option<&str>, pass: Option<&str>) -> HttpProxyConfig {
+        HttpProxyConfig {
+            enabled: true,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 8080,
+            auth_enabled,
+            username: user.map(String::from),
+            password: pass.map(String::from),
+            max_connections: 1000,
+        }
+    }
+
+    #[test]
+    fn test_auth_disabled_always_passes() {
+        let config = make_config(false, None, None);
+        assert!(HttpProtocol::check_proxy_auth("GET / HTTP/1.1\r\n\r\n", &config));
+    }
+
+    #[test]
+    fn test_auth_enabled_no_header_fails() {
+        let config = make_config(true, Some("user"), Some("pass"));
+        assert!(!HttpProtocol::check_proxy_auth("GET / HTTP/1.1\r\n\r\n", &config));
+    }
+
+    #[test]
+    fn test_auth_correct_credentials() {
+        let config = make_config(true, Some("user"), Some("pass"));
+        // "user:pass" -> base64 "dXNlcjpwYXNz"
+        let req = "GET / HTTP/1.1\r\nProxy-Authorization: Basic dXNlcjpwYXNz\r\n\r\n";
+        assert!(HttpProtocol::check_proxy_auth(req, &config));
+    }
+
+    #[test]
+    fn test_auth_wrong_credentials() {
+        let config = make_config(true, Some("user"), Some("pass"));
+        // "wrong:creds" -> base64 "d3Jvbmc6Y3JlZHM="
+        let req = "GET / HTTP/1.1\r\nProxy-Authorization: Basic d3Jvbmc6Y3JlZHM=\r\n\r\n";
+        assert!(!HttpProtocol::check_proxy_auth(req, &config));
+    }
+
+    #[test]
+    fn test_auth_case_insensitive_header() {
+        let config = make_config(true, Some("user"), Some("pass"));
+        let req = "GET / HTTP/1.1\r\nproxy-authorization: Basic dXNlcjpwYXNz\r\n\r\n";
+        assert!(HttpProtocol::check_proxy_auth(req, &config));
+    }
+
+    #[test]
+    fn test_auth_username_only() {
+        let config = make_config(true, Some("admin"), None);
+        // "admin:" -> base64 "YWRtaW46"
+        let req = "GET / HTTP/1.1\r\nProxy-Authorization: Basic YWRtaW46\r\n\r\n";
+        assert!(HttpProtocol::check_proxy_auth(req, &config));
+    }
+
+    // ── parse_connect_target ────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_connect_host_port() {
+        let (host, port) = HttpProtocol::parse_connect_target("example.com:443").unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 443);
+    }
+
+    #[test]
+    fn test_parse_connect_ipv4() {
+        let (host, port) = HttpProtocol::parse_connect_target("1.2.3.4:8080").unwrap();
+        assert_eq!(host, "1.2.3.4");
+        assert_eq!(port, 8080);
+    }
+
+    #[test]
+    fn test_parse_connect_ipv6() {
+        let (host, port) = HttpProtocol::parse_connect_target("[::1]:443").unwrap();
+        assert_eq!(host, "::1");
+        assert_eq!(port, 443);
+    }
+
+    #[test]
+    fn test_parse_connect_default_port() {
+        let (host, port) = HttpProtocol::parse_connect_target("[::1]:").unwrap();
+        assert_eq!(host, "::1");
+        assert_eq!(port, 443);
+    }
+
+    #[test]
+    fn test_parse_connect_invalid() {
+        assert!(HttpProtocol::parse_connect_target("nocolon").is_none());
+    }
+
+    // ── parse_http_url ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_http_url_basic() {
+        let req = "GET http://example.com/path HTTP/1.1\r\nHost: example.com\r\n\r\n";
+        let (host, port, path) = HttpProtocol::parse_http_url(req).unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 80);
+        assert_eq!(path, "/path");
+    }
+
+    #[test]
+    fn test_parse_http_url_with_port() {
+        let req = "GET http://example.com:8080/api/data HTTP/1.1\r\n\r\n";
+        let (host, port, path) = HttpProtocol::parse_http_url(req).unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 8080);
+        assert_eq!(path, "/api/data");
+    }
+
+    #[test]
+    fn test_parse_http_url_no_path() {
+        let req = "GET http://example.com HTTP/1.1\r\n\r\n";
+        let (host, port, path) = HttpProtocol::parse_http_url(req).unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 80);
+        assert_eq!(path, "/");
+    }
+
+    #[test]
+    fn test_parse_http_url_not_http() {
+        let req = "CONNECT example.com:443 HTTP/1.1\r\n\r\n";
+        assert!(HttpProtocol::parse_http_url(req).is_none());
+    }
+
+    // ── prepare_forward_request ─────────────────────────────────────────────
+
+    #[test]
+    fn test_prepare_forward_rewrite_path() {
+        let req = "GET http://example.com/page HTTP/1.1\r\nHost: example.com\r\nProxy-Authorization: Basic abc\r\n\r\n";
+        let result = HttpProtocol::prepare_forward_request(req, Some("/page"));
+
+        assert!(result.starts_with("GET /page HTTP/1.1\r\n"));
+        assert!(!result.contains("Proxy-Authorization"));
+        assert!(result.contains("Connection: close"));
+    }
+
+    #[test]
+    fn test_prepare_forward_keep_absolute_url() {
+        let req = "GET http://example.com/page HTTP/1.1\r\nHost: example.com\r\n\r\n";
+        let result = HttpProtocol::prepare_forward_request(req, None);
+
+        assert!(result.starts_with("GET http://example.com/page HTTP/1.1\r\n"));
+    }
+
+    #[test]
+    fn test_prepare_forward_strips_connection_header() {
+        let req = "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: keep-alive\r\n\r\n";
+        let result = HttpProtocol::prepare_forward_request(req, Some("/"));
+
+        assert!(!result.contains("keep-alive"));
+        assert!(result.contains("Connection: close"));
+    }
+
+    #[test]
+    fn test_prepare_forward_preserves_body() {
+        let req = "POST http://example.com/api HTTP/1.1\r\nHost: example.com\r\nContent-Length: 4\r\n\r\ndata";
+        let result = HttpProtocol::prepare_forward_request(req, Some("/api"));
+
+        assert!(result.ends_with("data"));
+        assert!(result.contains("Content-Length: 4"));
+    }
+}

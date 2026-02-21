@@ -372,3 +372,66 @@ impl Socks5Protocol {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_socks5_reply_success() {
+        let reply = socks5_reply(REP_SUCCESS);
+        assert_eq!(reply[0], 0x05); // version
+        assert_eq!(reply[1], 0x00); // success
+        assert_eq!(reply[2], 0x00); // reserved
+        assert_eq!(reply[3], 0x01); // IPv4 address type
+        assert_eq!(reply.len(), 10);
+    }
+
+    #[test]
+    fn test_socks5_reply_general_failure() {
+        let reply = socks5_reply(REP_GENERAL_FAILURE);
+        assert_eq!(reply[1], 0x01);
+    }
+
+    #[test]
+    fn test_socks5_reply_host_unreachable() {
+        let reply = socks5_reply(REP_HOST_UNREACHABLE);
+        assert_eq!(reply[1], 0x04);
+    }
+
+    #[test]
+    fn test_socks5_reply_conn_refused() {
+        let reply = socks5_reply(REP_CONN_REFUSED);
+        assert_eq!(reply[1], 0x05);
+    }
+
+    #[test]
+    fn test_socks5_reply_cmd_not_supported() {
+        let reply = socks5_reply(REP_CMD_NOT_SUPPORTED);
+        assert_eq!(reply[1], 0x07);
+    }
+
+    #[test]
+    fn test_socks5_reply_atyp_not_supported() {
+        let reply = socks5_reply(REP_ATYP_NOT_SUPPORTED);
+        assert_eq!(reply[1], 0x08);
+    }
+
+    #[test]
+    fn test_socks5_reply_zero_bound_address() {
+        let reply = socks5_reply(REP_SUCCESS);
+        // Bound address should be 0.0.0.0:0
+        assert_eq!(&reply[4..8], &[0x00, 0x00, 0x00, 0x00]); // IP
+        assert_eq!(&reply[8..10], &[0x00, 0x00]); // port
+    }
+
+    #[test]
+    fn test_socks5_version_constant() {
+        assert_eq!(SOCKS5_VERSION, 0x05);
+    }
+
+    #[test]
+    fn test_connect_timeout_constant() {
+        assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(15));
+    }
+}
