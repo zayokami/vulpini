@@ -16,7 +16,11 @@ const api = {
     try {
       const res = await fetch('http://localhost:9090/api/ips');
       const json = await res.json();
-      return json.success ? json.data : [];
+      if (!json?.success) return [];
+      const data = json.data;
+      if (Array.isArray(data)) return data as ApiIP[];
+      if (data && Array.isArray(data.ips)) return data.ips as ApiIP[];
+      return [];
     } catch {
       return [];
     }
@@ -35,7 +39,10 @@ const api = {
   async getHealth(): Promise<{ success: boolean; status: string } | null> {
     try {
       const res = await fetch('http://localhost:9090/api/health');
-      return await res.json();
+      const json = await res.json();
+      if (typeof json?.success !== 'boolean') return null;
+      const status = json.data?.status ?? json.status ?? 'unknown';
+      return { success: json.success, status };
     } catch {
       return null;
     }
@@ -166,7 +173,7 @@ class VulpiniApp {
     const statsGrid = create('div', { class: 'stats-grid' });
 
     const items: { label: string; value: string; valueClass: string; id: string }[] = [
-      { label: 'STATUS', value: this.isRunning ? 'RUNNING' : 'STOPPED', valueClass: this.isRunning ? 'running' : 'stopped', id: '' },
+      { label: 'STATUS', value: this.isRunning ? 'RUNNING' : 'STOPPED', valueClass: this.isRunning ? 'running' : 'stopped', id: 'stat-status' },
       { label: 'CONNECTIONS', value: String(this.stats.active_connections), valueClass: '', id: 'stat-connections' },
       { label: 'REQUESTS/S', value: this.stats.requests_per_second.toFixed(1), valueClass: '', id: 'stat-requests' },
       { label: 'BYTES/S', value: `${(this.stats.bytes_per_second / 1024).toFixed(1)} KB`, valueClass: '', id: 'stat-bytes' },
@@ -197,6 +204,11 @@ class VulpiniApp {
       const el = document.getElementById(id);
       if (el) el.textContent = text;
     };
+    const statusEl = document.getElementById('stat-status');
+    if (statusEl) {
+      statusEl.textContent = this.isRunning ? 'RUNNING' : 'STOPPED';
+      statusEl.className = `stat-value ${this.isRunning ? 'running' : 'stopped'}`.trim();
+    }
     setText('stat-connections', String(this.stats.active_connections));
     setText('stat-requests', this.stats.requests_per_second.toFixed(1));
     setText('stat-bytes', `${(this.stats.bytes_per_second / 1024).toFixed(1)} KB`);
