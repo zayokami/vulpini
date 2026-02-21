@@ -105,8 +105,29 @@ impl TrafficAnalyzer {
 
     fn update_stats(&mut self) {
         let now = Instant::now();
-        
+        let total_bytes_in = self.byte_history
+            .iter()
+            .filter(|(_, _, is_in)| *is_in)
+            .map(|(_, bytes, _)| *bytes)
+            .sum::<u64>();
+        let total_bytes_out = self.byte_history
+            .iter()
+            .filter(|(_, _, is_in)| !*is_in)
+            .map(|(_, bytes, _)| *bytes)
+            .sum::<u64>();
+
         if self.request_history.is_empty() {
+            self.current_stats.total_requests = 0;
+            self.current_stats.total_bytes_in = total_bytes_in;
+            self.current_stats.total_bytes_out = total_bytes_out;
+            self.current_stats.requests_per_second = 0.0;
+            self.current_stats.bytes_per_second = 0.0;
+            self.current_stats.avg_latency = Duration::ZERO;
+            self.current_stats.p50_latency = Duration::ZERO;
+            self.current_stats.p95_latency = Duration::ZERO;
+            self.current_stats.p99_latency = Duration::ZERO;
+            self.current_stats.error_count = 0;
+            self.current_stats.error_rate = 0.0;
             return;
         }
         
@@ -116,6 +137,17 @@ impl TrafficAnalyzer {
             .collect();
         
         if recent_requests.is_empty() {
+            self.current_stats.total_requests = 0;
+            self.current_stats.total_bytes_in = total_bytes_in;
+            self.current_stats.total_bytes_out = total_bytes_out;
+            self.current_stats.requests_per_second = 0.0;
+            self.current_stats.bytes_per_second = 0.0;
+            self.current_stats.avg_latency = Duration::ZERO;
+            self.current_stats.p50_latency = Duration::ZERO;
+            self.current_stats.p95_latency = Duration::ZERO;
+            self.current_stats.p99_latency = Duration::ZERO;
+            self.current_stats.error_count = 0;
+            self.current_stats.error_rate = 0.0;
             return;
         }
         
@@ -126,8 +158,8 @@ impl TrafficAnalyzer {
         let errors = recent_requests.iter().filter(|r| !r.success).count();
         
         self.current_stats.total_requests = total_requests;
-        self.current_stats.total_bytes_in = self.byte_history.iter().filter(|(_, _, is_in)| *is_in).map(|(_, bytes, _)| *bytes).sum::<u64>();
-        self.current_stats.total_bytes_out = self.byte_history.iter().filter(|(_, _, is_in)| !*is_in).map(|(_, bytes, _)| *bytes).sum::<u64>();
+        self.current_stats.total_bytes_in = total_bytes_in;
+        self.current_stats.total_bytes_out = total_bytes_out;
         self.current_stats.requests_per_second = total_requests as f64 / self.window_size.as_secs() as f64;
         self.current_stats.bytes_per_second = total_bytes as f64 / self.window_size.as_secs() as f64;
         

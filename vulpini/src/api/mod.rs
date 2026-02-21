@@ -325,10 +325,11 @@ async fn reload_config(
 // GET /pac, GET /proxy.pac
 
 async fn get_pac(State(state): State<AppState>) -> impl IntoResponse {
-    let manager = state.ip_manager.lock();
-    let socks5_addr = manager
-        .get_proxy_endpoint()
-        .unwrap_or_else(|| "127.0.0.1:1080".into());
+    let socks5_addr = {
+        let rx = state.config_manager.lock().subscribe();
+        let cfg = rx.borrow().clone();
+        format!("{}:{}", cfg.socks5.listen_address, cfg.socks5.listen_port)
+    };
 
     let pac = format!(
         r#"// Proxy Auto-Config file for Vulpini

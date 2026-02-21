@@ -156,7 +156,7 @@ impl Socks5Protocol {
 
     async fn handle_connection(
         mut socket: TcpStream,
-        peer_addr: String,
+        _peer_addr: String,
         start_time: Instant,
         config: Socks5Config,
         traffic_analyzer: &Arc<parking_lot::Mutex<TrafficAnalyzer>>,
@@ -345,8 +345,9 @@ impl Socks5Protocol {
 
         // Record metrics
         smart_router.lock().record_result(&target, true, connect_latency);
-        behavior_monitor.record_action(&peer_addr, &BehaviorRecord {
-            session_id: uuid::Uuid::new_v4().to_string(),
+        let session_id = uuid::Uuid::new_v4().to_string();
+        behavior_monitor.record_action(&session_id.clone(), &BehaviorRecord {
+            session_id,
             timestamp: start_time,
             action_type: ActionType::Connect,
             duration: connect_latency,

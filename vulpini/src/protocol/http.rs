@@ -220,7 +220,7 @@ impl HttpProtocol {
 
     async fn handle_connection(
         mut socket: TcpStream,
-        peer_addr: String,
+        _peer_addr: String,
         start_time: Instant,
         config: HttpProxyConfig,
         traffic_analyzer: &Arc<parking_lot::Mutex<TrafficAnalyzer>>,
@@ -280,8 +280,9 @@ impl HttpProtocol {
 
                     socket.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await?;
 
-                    behavior_monitor.record_action(&peer_addr, &BehaviorRecord {
-                        session_id: uuid::Uuid::new_v4().to_string(),
+                    let session_id = uuid::Uuid::new_v4().to_string();
+                    behavior_monitor.record_action(&session_id.clone(), &BehaviorRecord {
+                        session_id,
                         timestamp: start_time,
                         action_type: ActionType::Connect,
                         duration: latency,
@@ -347,10 +348,13 @@ impl HttpProtocol {
                     { smart_router.lock().record_result(&target, true, latency); }
 
                     upstream.write_all(forwarded.as_bytes()).await?;
-                    let bytes_to_client = tokio::io::copy(&mut upstream, &mut socket).await?;
+                    let (client_to_server, server_to_client) =
+                        tokio::io::copy_bidirectional(&mut socket, &mut upstream).await?;
+                    let client_bytes = client_to_server + n as u64;
 
-                    behavior_monitor.record_action(&peer_addr, &BehaviorRecord {
-                        session_id: uuid::Uuid::new_v4().to_string(),
+                    let session_id = uuid::Uuid::new_v4().to_string();
+                    behavior_monitor.record_action(&session_id.clone(), &BehaviorRecord {
+                        session_id,
                         timestamp: start_time,
                         action_type: ActionType::Request,
                         duration: latency,
@@ -367,7 +371,7 @@ impl HttpProtocol {
                             protocol: "http".to_string(),
                             success: true,
                         });
-                        analyzer.record_bytes(bytes_to_client, n as u64);
+                        analyzer.record_bytes(server_to_client, client_bytes);
                     }
                 }
                 Ok(Err(e)) => {

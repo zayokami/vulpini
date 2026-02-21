@@ -133,40 +133,46 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Create protocols with shared components
-    let socks5_protocol = Socks5Protocol::new(
-        config.socks5.clone(),
-        traffic_analyzer.clone(),
-        behavior_monitor.clone(),
-        ip_manager.clone(),
-        smart_router.clone(),
-    );
+    // Create protocols with shared components (respect enabled flags)
+    let socks5_task = if config.socks5.enabled {
+        let socks5_protocol = Socks5Protocol::new(
+            config.socks5.clone(),
+            traffic_analyzer.clone(),
+            behavior_monitor.clone(),
+            ip_manager.clone(),
+            smart_router.clone(),
+        );
+        let socks5_addr = format!("{}:{}", config.socks5.listen_address, config.socks5.listen_port);
+        logger.info(&format!("SOCKS5 server listening on {}", socks5_addr));
+        Some(tokio::spawn(async move {
+            if let Err(e) = socks5_protocol.start().await {
+                eprintln!("SOCKS5 server error: {}", e);
+            }
+        }))
+    } else {
+        logger.info("SOCKS5 server disabled by config");
+        None
+    };
 
-    let socks5_addr = format!("{}:{}", config.socks5.listen_address, config.socks5.listen_port);
-    logger.info(&format!("SOCKS5 server listening on {}", socks5_addr));
-
-    let socks5_task = tokio::spawn(async move {
-        if let Err(e) = socks5_protocol.start().await {
-            eprintln!("SOCKS5 server error: {}", e);
-        }
-    });
-
-    let http_protocol = HttpProtocol::new(
-        config.http_proxy.clone(),
-        traffic_analyzer.clone(),
-        behavior_monitor.clone(),
-        smart_router.clone(),
-        ip_manager.clone(),
-    );
-
-    let http_addr = format!("{}:{}", config.http_proxy.listen_address, config.http_proxy.listen_port);
-    logger.info(&format!("HTTP proxy server listening on {}", http_addr));
-
-    let http_task = tokio::spawn(async move {
-        if let Err(e) = http_protocol.start().await {
-            eprintln!("HTTP proxy server error: {}", e);
-        }
-    });
+    let http_task = if config.http_proxy.enabled {
+        let http_protocol = HttpProtocol::new(
+            config.http_proxy.clone(),
+            traffic_analyzer.clone(),
+            behavior_monitor.clone(),
+            smart_router.clone(),
+            ip_manager.clone(),
+        );
+        let http_addr = format!("{}:{}", config.http_proxy.listen_address, config.http_proxy.listen_port);
+        logger.info(&format!("HTTP proxy server listening on {}", http_addr));
+        Some(tokio::spawn(async move {
+            if let Err(e) = http_protocol.start().await {
+                eprintln!("HTTP proxy server error: {}", e);
+            }
+        }))
+    } else {
+        logger.info("HTTP proxy server disabled by config");
+        None
+    };
 
     let config_manager_arc = Arc::new(Mutex::new(config_manager));
 
@@ -190,9 +196,25 @@ async fn main() -> anyhow::Result<()> {
 
     logger.info("All servers running. Press Ctrl+C to stop.");
 
+    let socks5_wait = async move {
+        if let Some(task) = socks5_task {
+            let _ = task.await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    };
+
+    let http_wait = async move {
+        if let Some(task) = http_task {
+            let _ = task.await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    };
+
     tokio::select! {
-        _ = socks5_task => eprintln!("SOCKS5 server exited unexpectedly"),
-        _ = http_task => eprintln!("HTTP proxy server exited unexpectedly"),
+        _ = socks5_wait => eprintln!("SOCKS5 server exited unexpectedly"),
+        _ = http_wait => eprintln!("HTTP proxy server exited unexpectedly"),
         _ = api_task => eprintln!("API server exited unexpectedly"),
         _ = tokio::signal::ctrl_c() => {
             logger.info("Shutdown signal received, exiting...");
