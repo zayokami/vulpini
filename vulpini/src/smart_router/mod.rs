@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use parking_lot::Mutex;
 use std::time::Duration;
 use crate::config::RoutingConfig;
@@ -26,19 +25,37 @@ pub enum RouteType {
     Proxy,
 }
 
-pub struct SmartRouter {
-    config: RoutingConfig,
-    targets: Vec<Arc<RouteTarget>>,
-    target_stats: Vec<Mutex<TargetStats>>,
-    current_index: Mutex<usize>,
-}
-
-#[derive(Debug, Default)]
+/// Internal per-target statistics, protected by its own Mutex so
+/// `record_result(&self)` can update without `&mut self`.
+#[derive(Debug)]
 struct TargetStats {
     total_requests: u64,
     successful_requests: u64,
-    total_latency: Duration,
+    avg_latency: Duration,
     current_connections: u32,
+}
+
+impl Default for TargetStats {
+    fn default() -> Self {
+        Self {
+            total_requests: 0,
+            successful_requests: 0,
+            avg_latency: Duration::from_millis(100),
+            current_connections: 0,
+        }
+    }
+}
+
+struct TargetEntry {
+    ip: String,
+    port: u16,
+    stats: Mutex<TargetStats>,
+}
+
+pub struct SmartRouter {
+    config: RoutingConfig,
+    targets: Vec<TargetEntry>,
+    current_index: Mutex<usize>,
 }
 
 impl SmartRouter {
@@ -46,25 +63,41 @@ impl SmartRouter {
         Self {
             config,
             targets: Vec::new(),
-            target_stats: Vec::new(),
             current_index: Mutex::new(0),
         }
     }
 
     pub fn add_target(&mut self, ip: &str, port: u16) {
-        let target = Arc::new(RouteTarget {
+        if self.targets.iter().any(|t| t.ip == ip) {
+            return;
+        }
+        self.targets.push(TargetEntry {
             ip: ip.to_string(),
             port,
-            latency: Duration::from_millis(100),
-            reliability: 0.95,
-            load: 0.0,
+            stats: Mutex::new(TargetStats::default()),
         });
-        
-        self.targets.push(target);
-        self.target_stats.push(Mutex::new(TargetStats::default()));
     }
 
-    pub fn select_route(&mut self) -> RoutingDecision {
+    /// Build a `RouteTarget` snapshot from live stats.
+    fn snapshot(entry: &TargetEntry) -> RouteTarget {
+        let stats = entry.stats.lock();
+        let reliability = if stats.total_requests > 0 {
+            stats.successful_requests as f64 / stats.total_requests as f64
+        } else {
+            1.0 // assume healthy until proven otherwise
+        };
+        RouteTarget {
+            ip: entry.ip.clone(),
+            port: entry.port,
+            latency: stats.avg_latency,
+            reliability,
+            load: stats.current_connections as f64,
+        }
+    }
+
+    /// Select the best route based on the configured load-balancing strategy.
+    /// Takes `&self` — internal mutability handled by per-field Mutexes.
+    pub fn select_route(&self) -> RoutingDecision {
         if self.targets.is_empty() {
             return RoutingDecision {
                 selected_target: None,
@@ -73,92 +106,103 @@ impl SmartRouter {
                 fallback_targets: vec![],
             };
         }
-        
+
         let threshold = Duration::from_millis(self.config.max_latency_threshold_ms);
-        
-        let available_indices: Vec<usize> = self.targets
-            .iter()
+        let min_rel = self.config.min_reliability_threshold;
+
+        // Build snapshots of all targets from live stats.
+        let snapshots: Vec<(usize, RouteTarget)> = self.targets.iter()
             .enumerate()
-            .filter(|(_, t)| t.latency < threshold && t.reliability >= self.config.min_reliability_threshold)
-            .map(|(i, _)| i)
+            .map(|(i, entry)| (i, Self::snapshot(entry)))
             .collect();
-        
-        if available_indices.is_empty() {
-            let best = self.targets[0].clone();
+
+        let available: Vec<(usize, &RouteTarget)> = snapshots.iter()
+            .filter(|(_, t)| t.latency < threshold && t.reliability >= min_rel)
+            .map(|(i, t)| (*i, t))
+            .collect();
+
+        if available.is_empty() {
+            // Fallback: pick the first target regardless of thresholds.
+            let best = &snapshots[0].1;
             return RoutingDecision {
-                selected_target: Some(best.as_ref().clone()),
+                selected_target: Some(best.clone()),
                 route_type: RouteType::Proxy,
                 estimated_latency: best.latency,
                 fallback_targets: vec![],
             };
         }
-        
-        let selected_index = match self.config.load_balancing.as_str() {
-            "roundrobin" => self.round_robin_select(&available_indices),
-            "leastconnections" => self.least_connections_select(&available_indices),
-            "fastest" => self.fastest_response_select(&available_indices),
-            _ => self.fastest_response_select(&available_indices),
+
+        let selected_idx = match self.config.load_balancing.as_str() {
+            "roundrobin" => self.round_robin_select(&available),
+            "leastconnections" => self.least_connections_select(&available),
+            _ => self.fastest_response_select(&available),
         };
-        
-        let selected_target = self.targets[selected_index].clone();
-        
-        let fallback_targets: Vec<RouteTarget> = available_indices
-            .iter()
-            .filter(|&&i| i != selected_index)
-            .map(|&i| self.targets[i].as_ref().clone())
+
+        let selected = &snapshots[selected_idx].1;
+        let fallbacks: Vec<RouteTarget> = available.iter()
+            .filter(|(i, _)| *i != selected_idx)
+            .map(|(_, t)| (*t).clone())
             .collect();
-        
+
         RoutingDecision {
-            selected_target: Some(selected_target.as_ref().clone()),
+            selected_target: Some(selected.clone()),
             route_type: RouteType::Proxy,
-            estimated_latency: selected_target.latency,
-            fallback_targets,
+            estimated_latency: selected.latency,
+            fallback_targets: fallbacks,
         }
     }
 
-    pub fn record_result(&mut self, ip: &str, success: bool, latency: Duration) {
-        if let Some(index) = self.targets.iter().position(|t| t.ip == ip) {
-            let mut stats = self.target_stats[index].lock();
-            stats.total_requests += 1;
-            stats.total_latency += latency;
+    /// Record the result of a connection attempt. Updates running-average
+    /// latency and success counters for the given target IP.
+    /// Takes `&self` — stats are behind per-entry Mutexes.
+    pub fn record_result(&self, ip: &str, success: bool, latency: Duration) {
+        let Some(entry) = self.targets.iter().find(|t| t.ip == ip) else {
+            return;
+        };
+        let mut stats = entry.stats.lock();
+        stats.total_requests += 1;
 
-            if success {
-                stats.successful_requests += 1;
+        // Running average latency.
+        let n = stats.total_requests as f64;
+        let old_avg = stats.avg_latency.as_secs_f64();
+        let new_lat = latency.as_secs_f64();
+        stats.avg_latency = Duration::from_secs_f64((old_avg * (n - 1.0) + new_lat) / n);
+
+        if success {
+            stats.successful_requests += 1;
+        }
+    }
+
+    // ── Selection strategies ────────────────────────────────────────────────
+
+    fn round_robin_select(&self, available: &[(usize, &RouteTarget)]) -> usize {
+        let len = self.targets.len();
+        let mut current = self.current_index.lock();
+
+        for _ in 0..len {
+            *current = (*current + 1) % len;
+            let idx = *current;
+            if available.iter().any(|(i, _)| *i == idx) {
+                return idx;
             }
         }
+
+        available[0].0
     }
 
-    fn round_robin_select(&self, available_indices: &[usize]) -> usize {
-        let mut current = self.current_index.lock();
-        *current = (*current + 1) % self.targets.len();
-        let index = *current;
-        drop(current);
-        
-        if available_indices.contains(&index) {
-            index
-        } else {
-            available_indices[0]
-        }
-    }
-
-    fn least_connections_select(&self, available_indices: &[usize]) -> usize {
-        available_indices
-            .iter()
-            .min_by_key(|&&i| {
-                self.target_stats
-                    .get(i)
-                    .map(|s| s.lock().current_connections)
-                    .unwrap_or(0)
+    fn least_connections_select(&self, available: &[(usize, &RouteTarget)]) -> usize {
+        available.iter()
+            .min_by(|(_, a), (_, b)| {
+                a.load.partial_cmp(&b.load).unwrap_or(std::cmp::Ordering::Equal)
             })
-            .copied()
-            .unwrap_or(available_indices[0])
+            .map(|(i, _)| *i)
+            .unwrap_or(available[0].0)
     }
 
-    fn fastest_response_select(&self, available_indices: &[usize]) -> usize {
-        available_indices
-            .iter()
-            .min_by(|&&i, &&j| self.targets[i].latency.cmp(&self.targets[j].latency))
-            .copied()
-            .unwrap_or(available_indices[0])
+    fn fastest_response_select(&self, available: &[(usize, &RouteTarget)]) -> usize {
+        available.iter()
+            .min_by(|(_, a), (_, b)| a.latency.cmp(&b.latency))
+            .map(|(i, _)| *i)
+            .unwrap_or(available[0].0)
     }
 }

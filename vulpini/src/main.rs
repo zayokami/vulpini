@@ -25,7 +25,7 @@ async fn ip_health_check_task(
         tokio::time::sleep(interval).await;
 
         let (ip_address, ip_port): (String, u16) = {
-            let mut manager = ip_manager.lock();
+            let manager = ip_manager.lock();
             if let Some(ip_ref) = manager.select_ip() {
                 (ip_ref.address.clone(), ip_ref.port)
             } else {

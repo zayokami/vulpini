@@ -76,6 +76,81 @@ pub struct LoggingConfig {
     pub console_enabled: bool,
 }
 
+const VALID_IP_STRATEGIES: &[&str] = &["random", "roundrobin", "leastused", "performance"];
+const VALID_LB_STRATEGIES: &[&str] = &["roundrobin", "leastconnections", "fastest"];
+const VALID_LOG_LEVELS: &[&str] = &["trace", "debug", "info", "warn", "error"];
+
+impl ProxyConfig {
+    /// Validate configuration values after deserialization.
+    /// Returns a list of warnings/errors. An empty vec means all good.
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        // Port conflicts
+        if self.socks5.enabled && self.http_proxy.enabled
+            && self.socks5.listen_address == self.http_proxy.listen_address
+            && self.socks5.listen_port == self.http_proxy.listen_port
+        {
+            errors.push("SOCKS5 and HTTP proxy are bound to the same address:port".into());
+        }
+
+        // Auth requires credentials
+        if self.socks5.auth_enabled
+            && (self.socks5.username.is_none() || self.socks5.password.is_none())
+        {
+            errors.push("SOCKS5 auth is enabled but username/password not set".into());
+        }
+        if self.http_proxy.auth_enabled
+            && (self.http_proxy.username.is_none() || self.http_proxy.password.is_none())
+        {
+            errors.push("HTTP proxy auth is enabled but username/password not set".into());
+        }
+
+        // IP pool strategy
+        if !VALID_IP_STRATEGIES.contains(&self.ip_pool.strategy.as_str()) {
+            errors.push(format!(
+                "Unknown IP rotation strategy '{}', valid: {:?}",
+                self.ip_pool.strategy, VALID_IP_STRATEGIES,
+            ));
+        }
+
+        // Routing
+        if !VALID_LB_STRATEGIES.contains(&self.routing.load_balancing.as_str()) {
+            errors.push(format!(
+                "Unknown load-balancing strategy '{}', valid: {:?}",
+                self.routing.load_balancing, VALID_LB_STRATEGIES,
+            ));
+        }
+        if !(0.0..=1.0).contains(&self.routing.min_reliability_threshold) {
+            errors.push(format!(
+                "min_reliability_threshold ({}) must be in [0.0, 1.0]",
+                self.routing.min_reliability_threshold,
+            ));
+        }
+
+        // Anomaly detection thresholds
+        if self.anomaly_detection.spike_threshold <= 0.0 {
+            errors.push("spike_threshold must be > 0".into());
+        }
+        if !(0.0..=1.0).contains(&self.anomaly_detection.error_rate_threshold) {
+            errors.push(format!(
+                "error_rate_threshold ({}) must be in [0.0, 1.0]",
+                self.anomaly_detection.error_rate_threshold,
+            ));
+        }
+
+        // Logging level
+        if !VALID_LOG_LEVELS.contains(&self.logging.level.to_lowercase().as_str()) {
+            errors.push(format!(
+                "Unknown log level '{}', valid: {:?}",
+                self.logging.level, VALID_LOG_LEVELS,
+            ));
+        }
+
+        errors
+    }
+}
+
 impl Default for ProxyConfig {
     fn default() -> Self {
         ProxyConfig {
@@ -149,6 +224,9 @@ impl ConfigManager {
                 Ok(content) => {
                     let config: ProxyConfig = toml::from_str(&content)
                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                    for warn in config.validate() {
+                        eprintln!("[CONFIG WARNING] {}", warn);
+                    }
                     self.config_tx.send(config.clone()).ok();
                     Ok(config)
                 }
@@ -177,6 +255,9 @@ impl ConfigManager {
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             let config: ProxyConfig = toml::from_str(&content)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            for warn in config.validate() {
+                eprintln!("[CONFIG WARNING] {}", warn);
+            }
             self.config_tx.send(config.clone()).ok();
             Ok(config)
         } else {

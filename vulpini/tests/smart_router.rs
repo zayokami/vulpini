@@ -22,7 +22,7 @@ mod tests {
     #[test]
     fn test_smart_router_new() {
         let config = create_test_config();
-        let mut router = SmartRouter::new(config);
+        let router = SmartRouter::new(config);
 
         let decision = router.select_route();
         assert!(decision.selected_target.is_none());
@@ -31,7 +31,7 @@ mod tests {
     #[test]
     fn test_add_target() {
         let config = create_test_config();
-        let mut router = SmartRouter::new(config.clone());
+        let mut router = SmartRouter::new(config);
 
         router.add_target("192.168.1.1", 1080);
 
@@ -41,9 +41,23 @@ mod tests {
     }
 
     #[test]
-    fn test_select_route_no_targets() {
+    fn test_add_duplicate_target() {
         let config = create_test_config();
         let mut router = SmartRouter::new(config);
+
+        router.add_target("192.168.1.1", 1080);
+        router.add_target("192.168.1.1", 1080);
+
+        // Should still only have one target — fallback list empty.
+        let decision = router.select_route();
+        assert!(decision.selected_target.is_some());
+        assert!(decision.fallback_targets.is_empty());
+    }
+
+    #[test]
+    fn test_select_route_no_targets() {
+        let config = create_test_config();
+        let router = SmartRouter::new(config);
 
         let decision = router.select_route();
 
@@ -72,6 +86,7 @@ mod tests {
 
         router.add_target("192.168.1.1", 1080);
 
+        // Should be a no-op, not a panic.
         router.record_result("nonexistent", true, Duration::from_millis(50));
     }
 
@@ -96,6 +111,9 @@ mod tests {
 
         assert!(decision.selected_target.is_some());
         assert_eq!(decision.route_type, RouteType::Proxy);
+
+        // The target with lower latency (192.168.1.2 at 50ms) should be selected.
+        assert_eq!(decision.selected_target.unwrap().ip, "192.168.1.2");
     }
 
     #[test]
@@ -112,8 +130,16 @@ mod tests {
         router.add_target("192.168.1.1", 1080);
         router.add_target("192.168.1.2", 1080);
 
-        let _ = router.select_route();
-        let _ = router.select_route();
+        let d1 = router.select_route();
+        let d2 = router.select_route();
+
+        // Round-robin should cycle through different targets.
+        assert!(d1.selected_target.is_some());
+        assert!(d2.selected_target.is_some());
+        assert_ne!(
+            d1.selected_target.unwrap().ip,
+            d2.selected_target.unwrap().ip,
+        );
     }
 
     #[test]
@@ -178,7 +204,7 @@ mod tests {
     fn test_latency_threshold_filtering() {
         let config = RoutingConfig {
             max_latency_threshold_ms: 100,
-            min_reliability_threshold: 0.8,
+            min_reliability_threshold: 0.0,
             load_balancing: "fastest".to_string(),
             fallback_enabled: true,
         };
@@ -188,12 +214,39 @@ mod tests {
         router.add_target("192.168.1.1", 1080);
         router.add_target("192.168.1.2", 1080);
 
+        // Push both targets over the 100ms threshold.
         router.record_result("192.168.1.1", true, Duration::from_millis(200));
         router.record_result("192.168.1.2", true, Duration::from_millis(300));
 
         let decision = router.select_route();
 
+        // All targets exceed the threshold → fallback returns the first.
         assert!(decision.selected_target.is_some());
+    }
+
+    #[test]
+    fn test_reliability_updates_from_stats() {
+        let config = RoutingConfig {
+            max_latency_threshold_ms: 1000,
+            min_reliability_threshold: 0.5,
+            load_balancing: "fastest".to_string(),
+            fallback_enabled: true,
+        };
+
+        let mut router = SmartRouter::new(config);
+        router.add_target("192.168.1.1", 1080);
+
+        // 1 success out of 4 requests → 25% reliability, below threshold.
+        router.record_result("192.168.1.1", true, Duration::from_millis(50));
+        router.record_result("192.168.1.1", false, Duration::from_millis(50));
+        router.record_result("192.168.1.1", false, Duration::from_millis(50));
+        router.record_result("192.168.1.1", false, Duration::from_millis(50));
+
+        let decision = router.select_route();
+
+        // Below min_reliability_threshold, so available is empty → fallback.
+        assert!(decision.selected_target.is_some());
+        assert!(decision.fallback_targets.is_empty());
     }
 
     #[test]

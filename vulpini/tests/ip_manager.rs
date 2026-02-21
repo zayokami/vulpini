@@ -57,7 +57,7 @@ mod tests {
     #[test]
     fn test_select_ip_round_robin() {
         let config = create_test_ip_pool();
-        let mut manager = IPManager::new(config);
+        let manager = IPManager::new(config);
 
         // Round robin should return different IPs on each call
         let ip1 = manager.select_ip();
@@ -78,7 +78,7 @@ mod tests {
             strategy: "roundrobin".to_string(),
         };
 
-        let mut manager = IPManager::new(config);
+        let manager = IPManager::new(config);
         let result = manager.select_ip();
 
         assert!(result.is_none());
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn test_round_robin_strategy() {
         let config = create_round_robin_config();
-        let mut manager = IPManager::new(config);
+        let manager = IPManager::new(config);
 
         let ip1 = manager.select_ip();
         let ip2 = manager.select_ip();
@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn test_performance_strategy() {
         let config = create_performance_config();
-        let mut manager = IPManager::new(config);
+        let manager = IPManager::new(config);
 
         let ip = manager.select_ip();
         assert!(ip.is_some());
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn test_random_strategy() {
         let config = create_random_config();
-        let mut manager = IPManager::new(config);
+        let manager = IPManager::new(config);
 
         let ip = manager.select_ip();
         assert!(ip.is_some());
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn test_least_used_strategy() {
         let config = create_least_used_config();
-        let mut manager = IPManager::new(config);
+        let manager = IPManager::new(config);
 
         let ip = manager.select_ip();
         assert!(ip.is_some());
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn test_unknown_strategy_defaults_to_round_robin() {
         let config = create_unknown_strategy_config();
-        let mut manager = IPManager::new(config);
+        let manager = IPManager::new(config);
 
         let ip = manager.select_ip();
         assert!(ip.is_some());
