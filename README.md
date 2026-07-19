@@ -4,9 +4,9 @@
 
 # Vulpini
 
-A proxy client with a self-contained Rust core — in the spirit of Clash and V2RayN.
+A proxy client with a self-contained Rust core.
 
-基于纯 Rust 自研核心的代理客户端（类 Clash / V2RayN）。
+基于纯 Rust 自研核心的代理客户端。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
