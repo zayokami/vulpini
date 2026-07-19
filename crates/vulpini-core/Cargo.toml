@@ -30,9 +30,12 @@ arc-swap.workspace = true
 ipnet.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
+tokio-rustls.workspace = true
+webpki-roots.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-std"] }
 tempfile.workspace = true
 proptest.workspace = true
 shadowsocks = "1"
+rcgen = "0.14"

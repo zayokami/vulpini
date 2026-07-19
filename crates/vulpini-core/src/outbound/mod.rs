@@ -2,6 +2,7 @@ pub mod block;
 pub mod direct;
 pub mod selector;
 pub mod shadowsocks;
+pub mod trojan;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,6 +16,7 @@ pub use block::BlockOutbound;
 pub use direct::DirectOutbound;
 pub use selector::Selector;
 pub use shadowsocks::ShadowsocksOutbound;
+pub use trojan::TrojanOutbound;
 
 /// Tag of the always-present built-in outbounds.
 pub const TAG_DIRECT: &str = "direct";
@@ -27,6 +29,7 @@ pub const TAG_PROXY: &str = "proxy";
 pub fn build_outbound(node: &NodeConfig) -> Result<Arc<dyn Outbound>, CoreError> {
     match node {
         NodeConfig::Shadowsocks(c) => Ok(Arc::new(ShadowsocksOutbound::new(c.clone()))),
+        NodeConfig::Trojan(c) => Ok(Arc::new(TrojanOutbound::new(c.clone()))),
         other => Err(CoreError::Unsupported(format!(
             "outbound for protocol '{}' is not implemented yet",
             other.protocol()

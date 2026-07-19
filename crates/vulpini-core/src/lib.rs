@@ -13,6 +13,7 @@ pub mod node;
 pub mod outbound;
 pub mod relay;
 pub mod router;
+pub mod transport;
 
 pub use common::{Address, BoxedStream, CoreError, Network, Session};
 pub use config::{AppConfig, ConfigStore};
