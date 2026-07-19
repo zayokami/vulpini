@@ -1,0 +1,69 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vulpini-core",
+    "crates/vulpini-rules",
+    "crates/vulpini-sysproxy",
+    "crates/vulpini-cli",
+]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+authors = ["zayoka"]
+repository = "https://github.com/zayoka/vulpini"
+
+# Central version pins for the stack chosen in the rewrite plan.
+# Crates reference these with `dep.workspace = true`.
+[workspace.dependencies]
+# async runtime / utilities
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "io-util", "macros"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+futures = "0.3"
+async-trait = "0.1"
+arc-swap = "1"
+bytes = "1"
+
+# serialization / config
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# error handling / logging
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# TLS — ring provider ONLY. Never let aws-lc-rs into the tree (see CLAUDE.md).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-rustls = "0.26"
+webpki-roots = "1"
+
+# crypto for proxy protocols (RustCrypto)
+aes-gcm = "0.11.0"
+chacha20poly1305 = "0.11.0"
+hkdf = "0.13.0"
+sha1 = "0.11.0"
+sha2 = "0.11.0"
+md-5 = "0.11.0"
+rand = "0.10.2"
+
+# node links / subscriptions
+uuid = { version = "1", features = ["v4", "serde"] }
+base64 = "0.22"
+url = "2"
+percent-encoding = "2"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# dev
+tempfile = "3"
+proptest = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true

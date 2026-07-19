@@ -1,0 +1,19 @@
+[package]
+name = "vulpini-cli"
+description = "Headless CLI for the vulpini proxy core (dev and testing shell)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+vulpini-core = { path = "../vulpini-core" }
+vulpini-sysproxy = { path = "../vulpini-sysproxy" }
+clap.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing-subscriber.workspace = true
+
+[[bin]]
+name = "vulpini-cli"
+path = "src/main.rs"

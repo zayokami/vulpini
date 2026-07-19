@@ -1,6 +1,7 @@
 # Rust
 target/
-Cargo.lock
+**/*.rs.bk
+*.pdb
 
 # Generated files
 *.exe
@@ -21,11 +22,10 @@ Thumbs.db
 
 # Build outputs
 dist/
-dist-electron/
 build/
 
 # Logs
-*.log   
+*.log
 
 # Node
 node_modules/

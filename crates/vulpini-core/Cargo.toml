@@ -1,0 +1,9 @@
+[package]
+name = "vulpini-core"
+description = "Self-contained proxy client core: inbounds, outbounds, router, nodes, stats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
