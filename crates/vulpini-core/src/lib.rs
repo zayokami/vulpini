@@ -7,6 +7,7 @@
 pub mod common;
 pub mod config;
 pub mod engine;
+pub mod geo;
 pub mod inbound;
 pub mod node;
 pub mod outbound;
@@ -19,3 +20,10 @@ pub use engine::EngineHandle;
 pub use node::{Node, NodeConfig, NodeId};
 pub use outbound::{Outbound, OutboundRegistry};
 pub use router::{Mode, Router};
+
+/// Install rustls's ring provider as the process-wide crypto provider.
+/// Required before any TLS use (reqwest, tokio-rustls) because the whole
+/// dependency tree is pinned to ring-only. Idempotent; safe to call often.
+pub fn ensure_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}

@@ -13,6 +13,7 @@
 use std::fmt;
 
 use ipnet::IpNet;
+use vulpini_rules::GeoDb;
 
 use crate::common::Address;
 
@@ -29,10 +30,15 @@ pub enum Rule {
 }
 
 impl Rule {
-    /// GEOIP/GEOSITE never match until the geo database lands (M4b);
-    /// they also only ever apply to literal-IP / domain targets per the
-    /// no-resolve design.
+    /// Match without a geo database: GEOIP/GEOSITE never match.
     pub fn matches(&self, target: &Address) -> bool {
+        self.matches_with(target, None)
+    }
+
+    /// GEOIP matches literal-IP targets only (no local resolution);
+    /// GEOSITE matches domain targets only. Without a loaded database
+    /// both degrade to "never match" — never to a hard error.
+    pub fn matches_with(&self, target: &Address, geo: Option<&GeoDb>) -> bool {
         match self {
             Rule::Domain(d) => target.host().eq_ignore_ascii_case(d),
             Rule::DomainSuffix(suffix) => {
@@ -51,7 +57,16 @@ impl Rule {
                 // No local resolution: IP rules never match domain targets.
                 Address::Domain(..) => false,
             },
-            Rule::GeoIp(_) | Rule::GeoSite(_) => false,
+            Rule::GeoIp(code) => match (target, geo) {
+                (Address::Ip(addr), Some(db)) => db.ips.contains(code, addr.ip()),
+                _ => false,
+            },
+            Rule::GeoSite(code) => match (target, geo) {
+                (Address::Domain(host, _), Some(db)) => {
+                    db.sites.matcher(code).is_some_and(|m| m.matches(host))
+                }
+                _ => false,
+            },
             Rule::Port(p) => target.port() == *p,
             Rule::Match => true,
         }

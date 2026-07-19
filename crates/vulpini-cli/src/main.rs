@@ -60,6 +60,11 @@ enum Command {
         #[command(subcommand)]
         action: SubAction,
     },
+    /// Manage geo rule data (geosite.dat / geoip.dat).
+    Geo {
+        #[command(subcommand)]
+        action: GeoAction,
+    },
     /// Toggle the Windows system proxy.
     Sysproxy {
         #[arg(value_enum)]
@@ -76,6 +81,12 @@ enum SubAction {
         /// Subscription name; updates all when omitted.
         name: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum GeoAction {
+    /// Download the latest geo data files.
+    Update,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -145,6 +156,12 @@ async fn main() -> Result<()> {
                     .expect("default rules parse")
                 }
             };
+            let geo = vulpini_core::geo::GeoManager::new(config.geo.clone()).load();
+            match &geo {
+                Some(_) => println!("geo data loaded (geosite/geoip)"),
+                None => println!("no geo data (run 'geo update' to download); geo rules inactive"),
+            }
+            let router = router.with_geo(geo);
 
             let engine =
                 vulpini_core::EngineHandle::start(addr, Arc::new(registry), router).await?;
@@ -162,6 +179,15 @@ async fn main() -> Result<()> {
         Command::Mode { mode } => cmd_mode(&cli.config, mode)?,
         Command::Delay { .. } => anyhow::bail!("delay is not implemented yet — see milestone M8"),
         Command::Sub { .. } => anyhow::bail!("sub is not implemented yet — see milestone M7"),
+        Command::Geo { action } => match action {
+            GeoAction::Update => {
+                let store = ConfigStore::load(&cli.config)?;
+                let manager = vulpini_core::geo::GeoManager::new(store.config().geo.clone());
+                println!("downloading geosite.dat and geoip.dat ...");
+                let (site_len, ip_len) = manager.update().await?;
+                println!("updated: geosite.dat {site_len} bytes, geoip.dat {ip_len} bytes");
+            }
+        },
         Command::Sysproxy { action } => match action {
             SysproxyAction::Status => match vulpini_sysproxy::status() {
                 Ok(s) => println!("system proxy: {s:?}"),

@@ -22,6 +22,9 @@ pub enum CoreError {
 
     #[error("connection timed out")]
     Timeout,
+
+    #[error("http error: {0}")]
+    Http(#[from] reqwest::Error),
 }
 
 impl From<tokio::time::error::Elapsed> for CoreError {

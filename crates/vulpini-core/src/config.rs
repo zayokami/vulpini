@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
 
+use crate::geo::GeoConfig;
 use crate::node::{Node, NodeId};
 use crate::router::Mode;
 
@@ -26,6 +27,8 @@ pub struct AppConfig {
     pub nodes: Vec<Node>,
     #[serde(default)]
     pub subscriptions: Vec<Subscription>,
+    #[serde(default)]
+    pub geo: GeoConfig,
 }
 
 fn default_mode() -> Mode {
@@ -46,6 +49,7 @@ impl Default for AppConfig {
             active_node: None,
             nodes: Vec::new(),
             subscriptions: Vec::new(),
+            geo: GeoConfig::default(),
         }
     }
 }

@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+vulpini-rules = { path = "../vulpini-rules" }
 tokio.workspace = true
 tokio-util.workspace = true
 async-trait.workspace = true
@@ -27,6 +28,8 @@ rand.workspace = true
 bytes.workspace = true
 arc-swap.workspace = true
 ipnet.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-std"] }

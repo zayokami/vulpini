@@ -1,6 +1,9 @@
 pub mod rule;
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
+use vulpini_rules::GeoDb;
 
 use crate::common::Session;
 use crate::outbound::{TAG_DIRECT, TAG_PROXY};
@@ -21,11 +24,16 @@ pub enum Mode {
 pub struct Router {
     mode: Mode,
     rules: Vec<RouteRule>,
+    geo: Option<Arc<GeoDb>>,
 }
 
 impl Router {
     pub fn new(mode: Mode, rules: Vec<RouteRule>) -> Self {
-        Router { mode, rules }
+        Router {
+            mode,
+            rules,
+            geo: None,
+        }
     }
 
     pub fn from_config(mode: Mode, rule_strs: &[String]) -> Result<Self, RuleParseError> {
@@ -34,6 +42,12 @@ impl Router {
             .map(|s| RouteRule::parse(s))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Router::new(mode, rules))
+    }
+
+    /// Attach the geo database enabling GEOIP/GEOSITE rules.
+    pub fn with_geo(mut self, geo: Option<Arc<GeoDb>>) -> Self {
+        self.geo = geo;
+        self
     }
 
     pub fn mode(&self) -> Mode {
@@ -50,7 +64,7 @@ impl Router {
             Mode::Direct => TAG_DIRECT.to_string(),
             Mode::Rule => {
                 for rule in &self.rules {
-                    if rule.rule.matches(&session.target) {
+                    if rule.rule.matches_with(&session.target, self.geo.as_deref()) {
                         return rule.target.clone();
                     }
                 }

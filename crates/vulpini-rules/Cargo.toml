@@ -7,3 +7,14 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+prost.workspace = true
+thiserror.workspace = true
+regex.workspace = true
+aho-corasick.workspace = true
+ip_network_table.workspace = true
+ip_network.workspace = true
+tracing.workspace = true
+
+[build-dependencies]
+prost-build.workspace = true
+protoc-bin-vendored.workspace = true
