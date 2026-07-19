@@ -11,9 +11,11 @@ pub mod inbound;
 pub mod node;
 pub mod outbound;
 pub mod relay;
+pub mod router;
 
 pub use common::{Address, BoxedStream, CoreError, Network, Session};
 pub use config::{AppConfig, ConfigStore};
 pub use engine::EngineHandle;
 pub use node::{Node, NodeConfig, NodeId};
 pub use outbound::{Outbound, OutboundRegistry};
+pub use router::{Mode, Router};

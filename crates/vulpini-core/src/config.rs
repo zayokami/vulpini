@@ -6,6 +6,7 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::node::{Node, NodeId};
+use crate::router::Mode;
 
 /// Persisted application configuration (JSON on disk). Runtime state lives
 /// in the engine — never here.
@@ -13,6 +14,12 @@ use crate::node::{Node, NodeId};
 pub struct AppConfig {
     pub version: u32,
     pub listen: SocketAddr,
+    #[serde(default = "default_mode")]
+    pub mode: Mode,
+    /// Clash-style rule strings, evaluated in order; the last one is
+    /// usually "MATCH,proxy".
+    #[serde(default = "default_rules")]
+    pub rules: Vec<String>,
     #[serde(default)]
     pub active_node: Option<NodeId>,
     #[serde(default)]
@@ -21,11 +28,21 @@ pub struct AppConfig {
     pub subscriptions: Vec<Subscription>,
 }
 
+fn default_mode() -> Mode {
+    Mode::Rule
+}
+
+fn default_rules() -> Vec<String> {
+    crate::router::default_rules()
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
             version: 1,
             listen: "127.0.0.1:7890".parse().expect("valid default"),
+            mode: default_mode(),
+            rules: default_rules(),
             active_node: None,
             nodes: Vec::new(),
             subscriptions: Vec::new(),

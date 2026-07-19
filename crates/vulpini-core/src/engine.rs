@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use arc_swap::ArcSwap;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
@@ -12,6 +13,7 @@ use crate::common::{BoxedStream, CoreError, Session};
 use crate::inbound::{self, InboundKind};
 use crate::outbound::OutboundRegistry;
 use crate::relay::relay;
+use crate::router::Router;
 
 const DRAIN_GRACE: Duration = Duration::from_secs(5);
 
@@ -19,32 +21,30 @@ const DRAIN_GRACE: Duration = Duration::from_secs(5);
 /// Dropping it does nothing — call [`EngineHandle::shutdown`].
 pub struct EngineHandle {
     local_addr: SocketAddr,
+    router: Arc<ArcSwap<Router>>,
     shutdown: CancellationToken,
     accept_task: tokio::task::JoinHandle<()>,
     conns: Arc<Mutex<JoinSet<()>>>,
 }
 
 impl EngineHandle {
-    /// Start the engine, routing every session to the outbound named
-    /// `route_tag` in the registry. The router (M4a) replaces this with
-    /// per-session rule evaluation.
+    /// Start the engine with the given router. Routing decisions are made
+    /// per session; swapping the router later takes effect immediately.
     pub async fn start(
         listen: SocketAddr,
         registry: Arc<OutboundRegistry>,
-        route_tag: String,
+        router: Router,
     ) -> Result<Self, CoreError> {
-        // Fail fast on a typo'd tag instead of at the first connection.
-        registry.get(&route_tag)?;
-
         let listener = TcpListener::bind(listen).await?;
         let local_addr = listener.local_addr()?;
         let shutdown = CancellationToken::new();
         let conns: Arc<Mutex<JoinSet<()>>> = Arc::new(Mutex::new(JoinSet::new()));
+        let router = Arc::new(ArcSwap::from_pointee(router));
 
         let accept_task = tokio::spawn(accept_loop(
             listener,
             registry,
-            route_tag,
+            router.clone(),
             shutdown.clone(),
             conns.clone(),
         ));
@@ -52,6 +52,7 @@ impl EngineHandle {
         info!(%local_addr, "engine listening");
         Ok(Self {
             local_addr,
+            router,
             shutdown,
             accept_task,
             conns,
@@ -60,6 +61,12 @@ impl EngineHandle {
 
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
+    }
+
+    /// Hot-swap the router (mode or rule changes). In-flight connections
+    /// keep their already-dialed outbounds; new sessions use the new rules.
+    pub fn set_router(&self, router: Router) {
+        self.router.store(Arc::new(router));
     }
 
     /// Stop accepting, drain live connections with a grace period, then
@@ -81,7 +88,7 @@ impl EngineHandle {
 async fn accept_loop(
     listener: TcpListener,
     registry: Arc<OutboundRegistry>,
-    route_tag: String,
+    router: Arc<ArcSwap<Router>>,
     token: CancellationToken,
     conns: Arc<Mutex<JoinSet<()>>>,
 ) {
@@ -91,9 +98,9 @@ async fn accept_loop(
             accept = listener.accept() => match accept {
                 Ok((stream, _peer)) => {
                     let registry = registry.clone();
-                    let route_tag = route_tag.clone();
+                    let router = router.clone();
                     conns.lock().await.spawn(async move {
-                        if let Err(e) = handle_connection(stream, &registry, &route_tag).await {
+                        if let Err(e) = handle_connection(stream, &registry, &router).await {
                             debug!(error = %e, "connection closed with error");
                         }
                     });
@@ -110,7 +117,7 @@ async fn accept_loop(
 async fn handle_connection(
     stream: TcpStream,
     registry: &OutboundRegistry,
-    route_tag: &str,
+    router: &ArcSwap<Router>,
 ) -> Result<(), CoreError> {
     stream.set_nodelay(true).ok();
     let kind = inbound::detect(&stream).await?;
@@ -121,10 +128,10 @@ async fn handle_connection(
         InboundKind::Http => (inbound::http::handshake(&mut stream).await?, "http"),
     };
     let session = Session::tcp(target, tag);
-    debug!(target = %session.target, inbound = tag, outbound = route_tag, "session");
+    let route = router.load().route(&session);
+    debug!(target = %session.target, inbound = tag, outbound = %route, "session");
 
-    // The router arrives in milestone M4a; until then a fixed route tag.
-    let outbound = registry.get(route_tag)?;
+    let outbound = registry.get(&route)?;
     let upstream = match outbound.dial_tcp(&session).await {
         Ok(upstream) => upstream,
         Err(e) => {

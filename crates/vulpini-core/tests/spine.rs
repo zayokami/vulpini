@@ -48,7 +48,7 @@ async fn start_engine() -> (EngineHandle, std::net::SocketAddr) {
     let engine = EngineHandle::start(
         "127.0.0.1:0".parse().unwrap(),
         registry,
-        "direct".to_string(),
+        vulpini_core::Router::new(vulpini_core::Mode::Direct, vec![]),
     )
     .await
     .unwrap();

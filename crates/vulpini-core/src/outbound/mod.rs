@@ -1,5 +1,6 @@
 pub mod block;
 pub mod direct;
+pub mod selector;
 pub mod shadowsocks;
 
 use std::collections::HashMap;
@@ -12,11 +13,14 @@ use crate::node::NodeConfig;
 
 pub use block::BlockOutbound;
 pub use direct::DirectOutbound;
+pub use selector::Selector;
 pub use shadowsocks::ShadowsocksOutbound;
 
 /// Tag of the always-present built-in outbounds.
 pub const TAG_DIRECT: &str = "direct";
 pub const TAG_BLOCK: &str = "block";
+/// Tag of the selected-node outbound (a [`Selector`]).
+pub const TAG_PROXY: &str = "proxy";
 
 /// Build an outbound from a node configuration. Protocols without an
 /// implemented outbound (vmess for now) return `Unsupported`.
@@ -51,14 +55,24 @@ pub trait Outbound: Send + Sync + 'static {
 /// registry turns it into something dialable.
 pub struct OutboundRegistry {
     map: HashMap<String, Arc<dyn Outbound>>,
+    selector: Arc<Selector>,
 }
 
 impl OutboundRegistry {
+    /// Creates a registry with the built-ins: "direct", "block", and an
+    /// empty "proxy" selector (dials fail until a node is set).
     pub fn new() -> Self {
         let mut map: HashMap<String, Arc<dyn Outbound>> = HashMap::new();
         map.insert(TAG_DIRECT.into(), Arc::new(DirectOutbound::new()));
         map.insert(TAG_BLOCK.into(), Arc::new(BlockOutbound::new()));
-        Self { map }
+        let selector = Selector::new();
+        map.insert(TAG_PROXY.into(), selector.clone());
+        Self { map, selector }
+    }
+
+    /// The shared selector — set the active node through it.
+    pub fn selector(&self) -> Arc<Selector> {
+        self.selector.clone()
     }
 
     pub fn register(&mut self, outbound: Arc<dyn Outbound>) {

@@ -25,6 +25,8 @@ sha1.workspace = true
 md-5.workspace = true
 rand.workspace = true
 bytes.workspace = true
+arc-swap.workspace = true
+ipnet.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-std"] }

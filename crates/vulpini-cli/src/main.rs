@@ -42,6 +42,12 @@ enum Command {
         /// Node id prefix or name.
         node: String,
     },
+    /// Show or set the routing mode.
+    Mode {
+        /// New mode; prints the current one when omitted.
+        #[arg(value_enum)]
+        mode: Option<ModeArg>,
+    },
     /// Test latency of nodes through their real outbound path.
     Delay {
         /// Test every node.
@@ -79,6 +85,13 @@ enum SysproxyAction {
     Status,
 }
 
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum ModeArg {
+    Global,
+    Rule,
+    Direct,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -95,39 +108,46 @@ async fn main() -> Result<()> {
                 Some(l) => l.parse()?,
                 None => store.config().listen,
             };
-            let mut registry = vulpini_core::outbound::OutboundRegistry::new();
+            let registry = vulpini_core::outbound::OutboundRegistry::new();
 
-            // Route through the active node when configured; direct otherwise.
+            // Load the active node into the selector ("proxy" outbound).
             let active = store
                 .config()
                 .active_node
                 .and_then(|id| store.config().nodes.iter().find(|n| n.id == id));
-            let route_tag = match active {
+            match active {
                 Some(node) => match vulpini_core::outbound::build_outbound(&node.config) {
                     Ok(outbound) => {
-                        let tag = outbound.tag().to_string();
                         println!(
-                            "routing through: {} [{}] {}",
+                            "active node: {} [{}] {}",
                             node.name,
                             node.config.protocol(),
-                            tag
+                            outbound.tag()
                         );
-                        registry.register(outbound);
-                        tag
+                        registry.selector().set(outbound);
                     }
                     Err(e) => {
-                        eprintln!(
-                            "warning: node '{}' unusable ({e}); falling back to direct",
-                            node.name
-                        );
-                        "direct".to_string()
+                        eprintln!("warning: node '{}' unusable ({e})", node.name);
                     }
                 },
-                None => "direct".to_string(),
+                None => eprintln!("warning: no active node; 'proxy' outbound will fail"),
+            }
+
+            let config = store.config();
+            let router = match vulpini_core::Router::from_config(config.mode, &config.rules) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("warning: {e}; falling back to default rules");
+                    vulpini_core::Router::from_config(
+                        config.mode,
+                        &vulpini_core::router::default_rules(),
+                    )
+                    .expect("default rules parse")
+                }
             };
 
             let engine =
-                vulpini_core::EngineHandle::start(addr, Arc::new(registry), route_tag).await?;
+                vulpini_core::EngineHandle::start(addr, Arc::new(registry), router).await?;
             println!(
                 "vulpini listening on {} (mixed socks5/http)",
                 engine.local_addr()
@@ -139,6 +159,7 @@ async fn main() -> Result<()> {
         Command::Import { links } => cmd_import(&cli.config, links)?,
         Command::List => cmd_list(&cli.config)?,
         Command::Select { node } => cmd_select(&cli.config, &node)?,
+        Command::Mode { mode } => cmd_mode(&cli.config, mode)?,
         Command::Delay { .. } => anyhow::bail!("delay is not implemented yet — see milestone M8"),
         Command::Sub { .. } => anyhow::bail!("sub is not implemented yet — see milestone M7"),
         Command::Sysproxy { action } => match action {
@@ -227,6 +248,23 @@ fn cmd_list(path: &std::path::Path) -> Result<()> {
             ),
             source
         );
+    }
+    Ok(())
+}
+
+fn cmd_mode(path: &std::path::Path, mode: Option<ModeArg>) -> Result<()> {
+    let mut store = ConfigStore::load(path)?;
+    match mode {
+        None => println!("current mode: {:?}", store.config().mode),
+        Some(m) => {
+            store.config_mut().mode = match m {
+                ModeArg::Global => vulpini_core::Mode::Global,
+                ModeArg::Rule => vulpini_core::Mode::Rule,
+                ModeArg::Direct => vulpini_core::Mode::Direct,
+            };
+            store.save()?;
+            println!("mode set to {:?}", store.config().mode);
+        }
     }
     Ok(())
 }

@@ -68,10 +68,17 @@ async fn start_reference_ss_server(password: &str) -> std::net::SocketAddr {
                 tcp.write_all(&enc_salt).await.unwrap();
                 let mut enc = RefCipher::new(ref_kind(), &key, &enc_salt);
 
-                // Address header -> connect out.
+                // Address header -> connect out. Domain targets are mapped
+                // to loopback: the "remote" server is a local echo.
                 let header = ref_read_block(&mut tcp, &mut dec).await;
                 let (host, port) = parse_socks5_addr(&header);
-                let target = TcpStream::connect((host.as_str(), port)).await.unwrap();
+                let connect_host = match header[0] {
+                    0x03 => "127.0.0.1".to_string(),
+                    _ => host,
+                };
+                let target = TcpStream::connect((connect_host.as_str(), port))
+                    .await
+                    .unwrap();
                 let (mut tr, mut tw) = target.into_split();
                 let (mut cr, mut cw) = tcp.into_split();
 
@@ -146,33 +153,34 @@ async fn socks5_to_shadowsocks_full_stack() {
     let echo = start_plain_echo().await;
     let ss_server = start_reference_ss_server("fullstack-pw").await;
 
-    // Engine with an SS outbound as the fixed route.
+    // Engine in Global mode with an SS node selected.
     let node = NodeConfig::Shadowsocks(SsConfig {
         server: ss_server.ip().to_string(),
         port: ss_server.port(),
         method: SsMethod::Aes256Gcm,
         password: "fullstack-pw".into(),
     });
-    let outbound = build_outbound(&node).unwrap();
-    let tag = outbound.tag().to_string();
-    let mut registry = OutboundRegistry::new();
-    registry.register(outbound);
-    let engine = EngineHandle::start("127.0.0.1:0".parse().unwrap(), Arc::new(registry), tag)
-        .await
-        .unwrap();
+    let registry = OutboundRegistry::new();
+    registry.selector().set(build_outbound(&node).unwrap());
+    let engine = EngineHandle::start(
+        "127.0.0.1:0".parse().unwrap(),
+        Arc::new(registry),
+        vulpini_core::Router::new(vulpini_core::Mode::Global, vec![]),
+    )
+    .await
+    .unwrap();
 
-    // SOCKS5 client through the engine to the echo server.
+    // SOCKS5 client through the engine; a DOMAIN target (loopback targets
+    // are always direct by design, even in Global mode).
     let mut s = TcpStream::connect(engine.local_addr()).await.unwrap();
     s.write_all(&[0x05, 0x01, 0x00]).await.unwrap();
     let mut sel = [0u8; 2];
     s.read_exact(&mut sel).await.unwrap();
     assert_eq!(sel, [0x05, 0x00]);
 
-    let mut req = vec![0x05, 0x01, 0x00, 0x01];
-    let std::net::IpAddr::V4(echo_v4) = echo.ip() else {
-        panic!("loopback echo is v4")
-    };
-    req.extend_from_slice(&echo_v4.octets());
+    let host = b"fullstack.test";
+    let mut req = vec![0x05, 0x01, 0x00, 0x03, host.len() as u8];
+    req.extend_from_slice(host);
     req.extend_from_slice(&echo.port().to_be_bytes());
     s.write_all(&req).await.unwrap();
     let mut rep = [0u8; 10];

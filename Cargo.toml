@@ -54,6 +54,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 base64 = "0.22"
 url = "2"
 percent-encoding = "2"
+ipnet = "2"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
