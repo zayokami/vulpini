@@ -18,7 +18,7 @@ repository = "https://github.com/zayoka/vulpini"
 # Crates reference these with `dep.workspace = true`.
 [workspace.dependencies]
 # async runtime / utilities
-tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "io-util", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "io-util", "macros", "signal"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 futures = "0.3"
 async-trait = "0.1"

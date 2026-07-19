@@ -4,15 +4,12 @@
 //! shell concern, and it never creates a tokio Runtime itself — the embedding
 //! shell (CLI, Tauri app) owns the runtime.
 
-/// Returns the crate version.
-pub fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
-}
+pub mod common;
+pub mod engine;
+pub mod inbound;
+pub mod outbound;
+pub mod relay;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn smoke_version() {
-        assert!(!super::version().is_empty());
-    }
-}
+pub use common::{Address, BoxedStream, CoreError, Network, Session};
+pub use engine::EngineHandle;
+pub use outbound::{Outbound, OutboundRegistry};

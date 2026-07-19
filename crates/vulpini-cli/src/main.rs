@@ -80,7 +80,17 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Run { listen } => {
-            anyhow::bail!("run (listen {listen}) is not implemented yet — see milestone M1");
+            use std::sync::Arc;
+            let addr: std::net::SocketAddr = listen.parse()?;
+            let registry = Arc::new(vulpini_core::outbound::OutboundRegistry::new());
+            let engine = vulpini_core::EngineHandle::start(addr, registry).await?;
+            println!(
+                "vulpini listening on {} (mixed socks5/http)",
+                engine.local_addr()
+            );
+            tokio::signal::ctrl_c().await?;
+            println!("shutting down...");
+            engine.shutdown().await;
         }
         Command::Import { .. } => anyhow::bail!("import is not implemented yet — see milestone M2"),
         Command::List => anyhow::bail!("list is not implemented yet — see milestone M2"),
