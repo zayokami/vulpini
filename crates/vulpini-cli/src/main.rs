@@ -74,8 +74,10 @@ enum Command {
 
 #[derive(Subcommand)]
 enum SubAction {
-    /// Add a subscription.
+    /// Add a subscription (and fetch it immediately).
     Add { name: String, url: String },
+    /// List subscriptions.
+    List,
     /// Update one or all subscriptions.
     Update {
         /// Subscription name; updates all when omitted.
@@ -178,7 +180,77 @@ async fn main() -> Result<()> {
         Command::Select { node } => cmd_select(&cli.config, &node)?,
         Command::Mode { mode } => cmd_mode(&cli.config, mode)?,
         Command::Delay { .. } => anyhow::bail!("delay is not implemented yet — see milestone M8"),
-        Command::Sub { .. } => anyhow::bail!("sub is not implemented yet — see milestone M7"),
+        Command::Sub { action } => match action {
+            SubAction::Add { name, url } => {
+                let mut store = ConfigStore::load(&cli.config)?;
+                let id =
+                    vulpini_core::node::subscription::add_subscription(&mut store, &name, &url)?;
+                println!("subscription added: {name}");
+                match vulpini_core::node::subscription::update(&mut store, id).await {
+                    Ok(o) => println!("fetched: {} nodes", o.added),
+                    Err(e) => println!("warning: initial fetch failed: {e}"),
+                }
+            }
+            SubAction::List => {
+                let store = ConfigStore::load(&cli.config)?;
+                if store.config().subscriptions.is_empty() {
+                    println!("no subscriptions");
+                }
+                for sub in &store.config().subscriptions {
+                    let updated = sub
+                        .last_updated
+                        .map(|t| format!("{t}"))
+                        .unwrap_or_else(|| "never".into());
+                    let err = sub
+                        .last_error
+                        .as_deref()
+                        .map(|e| format!(" ERROR: {e}"))
+                        .unwrap_or_default();
+                    println!(
+                        "{}  {} nodes  updated {}  {}{}",
+                        &sub.id.simple().to_string()[..8],
+                        sub.node_count,
+                        updated,
+                        sub.name,
+                        err
+                    );
+                }
+            }
+            SubAction::Update { name } => {
+                let mut store = ConfigStore::load(&cli.config)?;
+                let ids: Vec<uuid::Uuid> = match &name {
+                    Some(n) => {
+                        let found: Vec<_> = store
+                            .config()
+                            .subscriptions
+                            .iter()
+                            .filter(|s| s.name == *n || s.id.to_string().starts_with(n))
+                            .map(|s| (s.id, s.name.clone()))
+                            .collect();
+                        match found.len() {
+                            0 => anyhow::bail!("no subscription matches '{n}'"),
+                            1 => vec![found[0].0],
+                            _ => anyhow::bail!("'{n}' matches {} subscriptions", found.len()),
+                        }
+                    }
+                    None => store.config().subscriptions.iter().map(|s| s.id).collect(),
+                };
+                if ids.is_empty() {
+                    println!("no subscriptions to update");
+                }
+                for id in ids {
+                    match vulpini_core::node::subscription::update(&mut store, id).await {
+                        Ok(o) => println!(
+                            "updated {}: +{} -{}",
+                            &id.simple().to_string()[..8],
+                            o.added,
+                            o.removed
+                        ),
+                        Err(e) => println!("failed {}: {e}", &id.simple().to_string()[..8]),
+                    }
+                }
+            }
+        },
         Command::Geo { action } => match action {
             GeoAction::Update => {
                 let store = ConfigStore::load(&cli.config)?;

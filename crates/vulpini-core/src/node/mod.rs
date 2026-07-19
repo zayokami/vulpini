@@ -1,5 +1,6 @@
 pub mod link;
 pub mod model;
+pub mod subscription;
 
 pub use link::{LinkError, parse_link};
 pub use model::{
