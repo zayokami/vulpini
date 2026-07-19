@@ -117,6 +117,7 @@ fn vless_config_strategy() -> impl Strategy<Value = VlessConfig> {
             tls,
             ws: ws.map(|(path, host)| WsConfig { path, host }),
             sni,
+            allow_insecure: false,
         })
 }
 

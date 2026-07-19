@@ -59,6 +59,11 @@ pub fn parse(rest: &str) -> Result<(String, NodeConfig), LinkError> {
         }
     };
 
+    let allow_insecure = matches!(
+        query_get(&query, "allowInsecure").map(|v| v.to_ascii_lowercase()),
+        Some(ref v) if v == "1" || v == "true"
+    );
+
     let config = NodeConfig::Vless(VlessConfig {
         server,
         port,
@@ -66,6 +71,7 @@ pub fn parse(rest: &str) -> Result<(String, NodeConfig), LinkError> {
         tls,
         ws,
         sni: query_get(&query, "sni").map(|s| s.to_string()),
+        allow_insecure,
     });
     Ok((name.unwrap_or_else(|| default_name(&config)), config))
 }
@@ -164,6 +170,7 @@ mod tests {
                 host: Some("sg.example.com".into()),
             }),
             sni: Some("sg.example.com".into()),
+            allow_insecure: false,
         };
         let (name, cfg) = parse(&render("sg", &config)).unwrap();
         assert_eq!(name, "sg");

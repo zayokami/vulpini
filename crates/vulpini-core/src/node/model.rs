@@ -210,6 +210,9 @@ pub struct VlessConfig {
     pub ws: Option<WsConfig>,
     #[serde(default)]
     pub sni: Option<String>,
+    /// Skip certificate verification (allowInsecure=1 in links).
+    #[serde(default)]
+    pub allow_insecure: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

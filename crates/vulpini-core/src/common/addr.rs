@@ -56,6 +56,30 @@ impl Address {
         buf.extend_from_slice(&self.port().to_be_bytes());
     }
 
+    /// Append the VLESS address encoding to `buf`: ATYP + address only
+    /// (VLESS carries the port separately, before ATYP). ATYP values are
+    /// NOT the socks5 ones: 1 = IPv4, 2 = domain, 3 = IPv6.
+    pub fn write_vless_addr(&self, buf: &mut Vec<u8>) {
+        match self {
+            Address::Ip(addr) => match addr.ip() {
+                IpAddr::V4(v4) => {
+                    buf.push(0x01);
+                    buf.extend_from_slice(&v4.octets());
+                }
+                IpAddr::V6(v6) => {
+                    buf.push(0x03);
+                    buf.extend_from_slice(&v6.octets());
+                }
+            },
+            Address::Domain(host, _) => {
+                debug_assert!(host.len() <= 255, "domain too long for vless encoding");
+                buf.push(0x02);
+                buf.push(host.len().min(255) as u8);
+                buf.extend_from_slice(host.as_bytes());
+            }
+        }
+    }
+
     /// True when the target is loopback, private, link-local, or otherwise
     /// non-public address space. Always routed direct by the router.
     pub fn is_private_or_loopback(&self) -> bool {
