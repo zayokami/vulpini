@@ -5,11 +5,15 @@
 //! shell (CLI, Tauri app) owns the runtime.
 
 pub mod common;
+pub mod config;
 pub mod engine;
 pub mod inbound;
+pub mod node;
 pub mod outbound;
 pub mod relay;
 
 pub use common::{Address, BoxedStream, CoreError, Network, Session};
+pub use config::{AppConfig, ConfigStore};
 pub use engine::EngineHandle;
+pub use node::{Node, NodeConfig, NodeId};
 pub use outbound::{Outbound, OutboundRegistry};

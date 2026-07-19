@@ -1,0 +1,9 @@
+ss://YWVzLTI1Ni1nY206cGFzc3dvcmQxMjM@192.168.100.1:8388#SIP002 sample
+ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@1.2.3.4:8388/?#plain fragment
+ss://chacha20-ietf-poly1305:s3cret@203.0.113.7:443#plain userinfo
+ss://YWVzLTEyOC1nY206cHc@example.com:1080
+trojan://supersecret@trojan.example.com:443?sni=www.bing.com#trojan hk
+trojan://pw@198.51.100.2:8443
+vless://b831381d-6324-4d53-ad4f-8cda48b30811@vless.example.com:443?security=tls&type=tcp#vless tcp tls
+vless://b831381d-6324-4d53-ad4f-8cda48b30811@cdn.example.com:80?type=ws&path=%2Fray&host=cdn.example.com#vless ws
+vmess://eyJ2IjoiMiIsInBzIjoidm1lc3MgdGVzdCIsImFkZCI6InZtLmV4YW1wbGUuY29tIiwicG9ydCI6IjQ0MyIsImlkIjoiYjgzMTM4MWQtNjMyNC00ZDUzLWFkNGYtOGNkYTQ4YjMwODExIiwiYWlkIjoiMCIsInNjeSI6ImF1dG8iLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6InZtLmV4YW1wbGUuY29tIiwicGF0aCI6Ii92bWVzcyIsInRscyI6InRscyIsInNuaSI6IiJ9

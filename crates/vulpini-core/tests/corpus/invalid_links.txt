@@ -1,0 +1,8 @@
+ss://rc4-md5:pw@1.2.3.4:8388
+ss://YWVzLTI1Ni1nY206cHc@1.2.3.4:8388/?plugin=obfs-local#needs plugin
+vless://b831381d-6324-4d53-ad4f-8cda48b30811@x.example.com:443?security=reality&pbk=xyz
+vless://b831381d-6324-4d53-ad4f-8cda48b30811@x.example.com:443?flow=xtls-rprx-vision
+vless://not-a-uuid@x.example.com:443
+trojan://missing-port.example.com
+http://not-a-proxy-link.com/path
+vmess://bm90LWpzb24=

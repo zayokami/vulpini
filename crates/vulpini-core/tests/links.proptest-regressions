@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc e640e45b19794b4e0ccbe861af5a9e16acb9d3baeed10f0fe19be9679e674a69 # shrinks to config = VlessConfig { server: "a.com", port: 1, uuid: 00000000-0000-0000-0000-000000000000, tls: false, ws: None, sni: None }, name = "A "
+cc 4ba2ef0599e39e7f4914b5d970ca501f44a3767402e0d78cd527d9c9edf13dd7 # shrinks to config = TrojanConfig { server: "a.com", port: 1, password: "!", sni: None, allow_insecure: false }, name = "a "
+cc b55135f176da1cf67235a4c5e05bcbb403f97dcf5be90f1c1d9446e63087306b # shrinks to config = SsConfig { server: "a.com", port: 1, method: Aes128Gcm, password: "0" }, name = "0 "
