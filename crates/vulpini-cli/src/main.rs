@@ -95,8 +95,39 @@ async fn main() -> Result<()> {
                 Some(l) => l.parse()?,
                 None => store.config().listen,
             };
-            let registry = Arc::new(vulpini_core::outbound::OutboundRegistry::new());
-            let engine = vulpini_core::EngineHandle::start(addr, registry).await?;
+            let mut registry = vulpini_core::outbound::OutboundRegistry::new();
+
+            // Route through the active node when configured; direct otherwise.
+            let active = store
+                .config()
+                .active_node
+                .and_then(|id| store.config().nodes.iter().find(|n| n.id == id));
+            let route_tag = match active {
+                Some(node) => match vulpini_core::outbound::build_outbound(&node.config) {
+                    Ok(outbound) => {
+                        let tag = outbound.tag().to_string();
+                        println!(
+                            "routing through: {} [{}] {}",
+                            node.name,
+                            node.config.protocol(),
+                            tag
+                        );
+                        registry.register(outbound);
+                        tag
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "warning: node '{}' unusable ({e}); falling back to direct",
+                            node.name
+                        );
+                        "direct".to_string()
+                    }
+                },
+                None => "direct".to_string(),
+            };
+
+            let engine =
+                vulpini_core::EngineHandle::start(addr, Arc::new(registry), route_tag).await?;
             println!(
                 "vulpini listening on {} (mixed socks5/http)",
                 engine.local_addr()

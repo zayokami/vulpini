@@ -45,9 +45,13 @@ async fn start_echo(half_close_after: Option<usize>) -> std::net::SocketAddr {
 
 async fn start_engine() -> (EngineHandle, std::net::SocketAddr) {
     let registry = Arc::new(OutboundRegistry::new());
-    let engine = EngineHandle::start("127.0.0.1:0".parse().unwrap(), registry)
-        .await
-        .unwrap();
+    let engine = EngineHandle::start(
+        "127.0.0.1:0".parse().unwrap(),
+        registry,
+        "direct".to_string(),
+    )
+    .await
+    .unwrap();
     let addr = engine.local_addr();
     (engine, addr)
 }

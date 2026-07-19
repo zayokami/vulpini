@@ -1,5 +1,6 @@
 pub mod block;
 pub mod direct;
+pub mod shadowsocks;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,13 +8,27 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::common::{BoxedStream, CoreError, Session};
+use crate::node::NodeConfig;
 
 pub use block::BlockOutbound;
 pub use direct::DirectOutbound;
+pub use shadowsocks::ShadowsocksOutbound;
 
 /// Tag of the always-present built-in outbounds.
 pub const TAG_DIRECT: &str = "direct";
 pub const TAG_BLOCK: &str = "block";
+
+/// Build an outbound from a node configuration. Protocols without an
+/// implemented outbound (vmess for now) return `Unsupported`.
+pub fn build_outbound(node: &NodeConfig) -> Result<Arc<dyn Outbound>, CoreError> {
+    match node {
+        NodeConfig::Shadowsocks(c) => Ok(Arc::new(ShadowsocksOutbound::new(c.clone()))),
+        other => Err(CoreError::Unsupported(format!(
+            "outbound for protocol '{}' is not implemented yet",
+            other.protocol()
+        ))),
+    }
+}
 
 /// A way out of the proxy: direct, block, or a proxy protocol.
 ///

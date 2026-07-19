@@ -10,7 +10,7 @@ use tracing::{debug, info, warn};
 
 use crate::common::{BoxedStream, CoreError, Session};
 use crate::inbound::{self, InboundKind};
-use crate::outbound::{OutboundRegistry, TAG_DIRECT};
+use crate::outbound::OutboundRegistry;
 use crate::relay::relay;
 
 const DRAIN_GRACE: Duration = Duration::from_secs(5);
@@ -25,10 +25,17 @@ pub struct EngineHandle {
 }
 
 impl EngineHandle {
+    /// Start the engine, routing every session to the outbound named
+    /// `route_tag` in the registry. The router (M4a) replaces this with
+    /// per-session rule evaluation.
     pub async fn start(
         listen: SocketAddr,
         registry: Arc<OutboundRegistry>,
+        route_tag: String,
     ) -> Result<Self, CoreError> {
+        // Fail fast on a typo'd tag instead of at the first connection.
+        registry.get(&route_tag)?;
+
         let listener = TcpListener::bind(listen).await?;
         let local_addr = listener.local_addr()?;
         let shutdown = CancellationToken::new();
@@ -37,6 +44,7 @@ impl EngineHandle {
         let accept_task = tokio::spawn(accept_loop(
             listener,
             registry,
+            route_tag,
             shutdown.clone(),
             conns.clone(),
         ));
@@ -73,6 +81,7 @@ impl EngineHandle {
 async fn accept_loop(
     listener: TcpListener,
     registry: Arc<OutboundRegistry>,
+    route_tag: String,
     token: CancellationToken,
     conns: Arc<Mutex<JoinSet<()>>>,
 ) {
@@ -82,8 +91,9 @@ async fn accept_loop(
             accept = listener.accept() => match accept {
                 Ok((stream, _peer)) => {
                     let registry = registry.clone();
+                    let route_tag = route_tag.clone();
                     conns.lock().await.spawn(async move {
-                        if let Err(e) = handle_connection(stream, &registry).await {
+                        if let Err(e) = handle_connection(stream, &registry, &route_tag).await {
                             debug!(error = %e, "connection closed with error");
                         }
                     });
@@ -100,6 +110,7 @@ async fn accept_loop(
 async fn handle_connection(
     stream: TcpStream,
     registry: &OutboundRegistry,
+    route_tag: &str,
 ) -> Result<(), CoreError> {
     stream.set_nodelay(true).ok();
     let kind = inbound::detect(&stream).await?;
@@ -110,10 +121,10 @@ async fn handle_connection(
         InboundKind::Http => (inbound::http::handshake(&mut stream).await?, "http"),
     };
     let session = Session::tcp(target, tag);
-    debug!(target = %session.target, inbound = tag, "session");
+    debug!(target = %session.target, inbound = tag, outbound = route_tag, "session");
 
-    // The router arrives in milestone M4a; until then everything is direct.
-    let outbound = registry.get(TAG_DIRECT)?;
+    // The router arrives in milestone M4a; until then a fixed route tag.
+    let outbound = registry.get(route_tag)?;
     let upstream = match outbound.dial_tcp(&session).await {
         Ok(upstream) => upstream,
         Err(e) => {
