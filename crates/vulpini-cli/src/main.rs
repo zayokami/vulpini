@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Run { listen } => {
-            let store = ConfigStore::load(&cli.config)?;
+            let mut store = ConfigStore::load(&cli.config)?;
             let addr = match listen {
                 Some(l) => l.parse()?,
                 None => store.config().listen,
@@ -166,7 +166,17 @@ async fn main() -> Result<()> {
             let router = router.with_geo(geo);
 
             let engine =
-                vulpini_core::EngineHandle::start(addr, Arc::new(registry), router).await?;
+                vulpini_core::EngineHandle::start_with_fallback(addr, Arc::new(registry), router)
+                    .await?;
+            if engine.local_addr() != addr {
+                println!(
+                    "warning: port {} unavailable, using {} instead",
+                    addr,
+                    engine.local_addr()
+                );
+                store.config_mut().listen = engine.local_addr();
+                store.save().ok();
+            }
             println!(
                 "vulpini listening on {} (mixed socks5/http)",
                 engine.local_addr()

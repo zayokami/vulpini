@@ -127,10 +127,41 @@ pub async fn core_start(app: AppHandle, state: State<'_, AppState>) -> CmdResult
     let router = state.build_router().await;
     let listen = state.store.read().await.config().listen;
     let engine = Arc::new(
-        EngineHandle::start(listen, state.registry.clone(), router)
+        EngineHandle::start_with_fallback(listen, state.registry.clone(), router)
             .await
             .map_err(err)?,
     );
+
+    // Port fallback: persist the working address so the next start hits
+    // it directly, and re-point the system proxy if we own it.
+    let actual = engine.local_addr();
+    if actual != listen {
+        tracing::warn!(requested = %listen, actual = %actual, "listen port substituted");
+        let mut store = state.store.write().await;
+        store.config_mut().listen = actual;
+        if let Err(e) = store.save() {
+            tracing::warn!(error = %e, "failed to save config");
+        }
+        if store.config().system_proxy_enabled {
+            match vulpini_sysproxy::enable(&actual.to_string()) {
+                Ok(_) => tracing::info!(%actual, "system proxy re-pointed to new port"),
+                Err(e) => tracing::warn!(error = %e, "failed to re-point system proxy"),
+            }
+        }
+        drop(store);
+        let _ = app.emit(
+            "log:line",
+            vulpini_core::logbus::LogEvent {
+                level: "WARN".into(),
+                target: "vulpini".into(),
+                message: format!("端口 {listen} 不可用，已自动改用 {actual}"),
+                ts: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            },
+        );
+    }
 
     let app2 = app.clone();
     let mut rx = engine.events();

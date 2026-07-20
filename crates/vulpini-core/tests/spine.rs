@@ -187,6 +187,29 @@ async fn stats_events_tick_with_traffic() {
 }
 
 #[tokio::test]
+async fn port_fallback_lands_on_a_free_port() {
+    let blocker = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let taken = blocker.local_addr().unwrap();
+
+    let registry = Arc::new(OutboundRegistry::new());
+    let engine = EngineHandle::start_with_fallback(
+        taken,
+        registry,
+        vulpini_core::Router::new(vulpini_core::Mode::Direct, vec![]),
+    )
+    .await
+    .expect("fallback should find a free port");
+
+    assert_ne!(
+        engine.local_addr().port(),
+        taken.port(),
+        "must not bind the occupied port"
+    );
+    engine.shutdown().await;
+    drop(blocker);
+}
+
+#[tokio::test]
 async fn unreachable_target_reports_error() {
     let (engine, proxy) = start_engine().await;
 

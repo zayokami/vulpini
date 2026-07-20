@@ -42,6 +42,52 @@ impl EngineHandle {
         router: Router,
     ) -> Result<Self, CoreError> {
         let listener = TcpListener::bind(listen).await?;
+        Self::from_listener(listener, registry, router).await
+    }
+
+    /// Start with port fallback: try `listen`, then the next few ports,
+    /// then let the OS assign a free port. Windows reserves whole port
+    /// ranges (Hyper-V/WSL/Docker), so a fixed port can be unusable for
+    /// reasons the user cannot see. The actual address is available via
+    /// [`EngineHandle::local_addr`] — callers should persist it.
+    pub async fn start_with_fallback(
+        listen: SocketAddr,
+        registry: Arc<OutboundRegistry>,
+        router: Router,
+    ) -> Result<Self, CoreError> {
+        let mut first_err: Option<CoreError> = None;
+        for offset in 0u16..=2 {
+            let Some(port) = listen.port().checked_add(offset) else {
+                break;
+            };
+            let candidate = SocketAddr::new(listen.ip(), port);
+            match TcpListener::bind(candidate).await {
+                Ok(listener) => return Self::from_listener(listener, registry, router).await,
+                Err(e) => {
+                    warn!(addr = %candidate, error = %e, "listen address unavailable");
+                    if first_err.is_none() {
+                        first_err = Some(e.into());
+                    }
+                }
+            }
+        }
+        // OS-assigned port as the last resort: always outside reservations.
+        let wildcard = SocketAddr::new(listen.ip(), 0);
+        match TcpListener::bind(wildcard).await {
+            Ok(listener) => {
+                let actual = listener.local_addr()?;
+                warn!(addr = %actual, "falling back to an OS-assigned port");
+                Self::from_listener(listener, registry, router).await
+            }
+            Err(e) => Err(first_err.unwrap_or_else(|| e.into())),
+        }
+    }
+
+    async fn from_listener(
+        listener: TcpListener,
+        registry: Arc<OutboundRegistry>,
+        router: Router,
+    ) -> Result<Self, CoreError> {
         let local_addr = listener.local_addr()?;
         let shutdown = CancellationToken::new();
         let conns: Arc<Mutex<JoinSet<()>>> = Arc::new(Mutex::new(JoinSet::new()));
