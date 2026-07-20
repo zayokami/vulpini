@@ -45,12 +45,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `uses:` steps ignore defaults.working-directory — point the action
+      # at the package.json inside vulpini-x/ for the pnpm version.
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: vulpini-x/package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
+          cache-dependency-path: vulpini-x/pnpm-lock.yaml
 
       - name: Install
         run: pnpm install --frozen-lockfile
