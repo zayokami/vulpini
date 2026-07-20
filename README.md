@@ -50,22 +50,52 @@ cargo run -p vulpini-cli -- --help
 ## Status · 状态
 
 The project was rebuilt from scratch (the legacy IP-rotation server was removed).
-Development proceeds milestone by milestone; every engine milestone is verifiable
-through the CLI before the GUI arrives.
+Development proceeds milestone by milestone; every engine milestone was verified
+through the CLI before the GUI arrived.
 
 项目已推倒重做（旧的 IP 轮换服务器已删除）。按里程碑推进，引擎的每个
-里程碑在 GUI 落地前都可以通过 CLI 验证。
+里程碑在 GUI 落地前都通过了 CLI 验证。
 
 | Milestone | Scope | Status |
 |-----------|-------|--------|
 | M0 | Workspace, CI, MIT license | Done |
-| M1 | Core spine: mixed inbound, direct/block, relay | Planned |
-| M2 | Node model, share-link parsers, config store | Planned |
-| M3 | Shadowsocks outbound (AEAD) | Planned |
-| M4 | Router + geosite/geoip rules | Planned |
-| M5–M6 | Trojan, VLESS (+TLS/WS transports) | Planned |
-| M7–M9 | Subscriptions, stats/logs/delay, system proxy | Planned |
-| M10–M11 | Tauri + React GUI, packaging | Planned |
+| M1 | Core spine: mixed inbound, direct/block, relay | Done |
+| M2 | Node model, share-link parsers, config store | Done |
+| M3 | Shadowsocks outbound (AEAD) | Done |
+| M4 | Router + geosite/geoip rules | Done |
+| M5 | TLS transport + Trojan outbound | Done |
+| M6 | WS transport + VLESS outbound | Done |
+| M7 | Subscriptions (fetch, sniffing, stable-key update) | Done |
+| M8 | Stats, log bus, delay testing | Done |
+| M9 | Windows system proxy (snapshot/restore) | Done |
+| M10 | Tauri 2 + React GUI | Done |
+| M11 | Packaging + release pipeline + license audit | Done |
+
+Post-MVP roadmap: VMess outbound, UDP relay, TUN mode, Hysteria2/TUIC,
+REALITY (documented limitations of the rustls TLS stack).
+
+## Usage · 使用
+
+### Desktop app (Vulpini X)
+
+```bash
+cd vulpini-x
+pnpm install
+pnpm tauri dev     # dev mode
+pnpm tauri build   # produces NSIS/MSI installers in target/release/bundle/
+```
+
+### Headless CLI (engine test shell)
+
+```bash
+cargo run -p vulpini-cli -- run                    # serve 127.0.0.1:7890 (mixed socks5/http)
+vulpini-cli import "ss://..." "trojan://..."       # import share links
+vulpini-cli sub add my-sub https://example.com/sub # add a subscription
+vulpini-cli list && vulpini-cli select <id>        # pick the active node
+vulpini-cli delay --all                            # latency-test all nodes
+vulpini-cli geo update                             # refresh geosite/geoip data
+vulpini-cli sysproxy on|off|status                 # toggle Windows system proxy
+```
 
 ## License · 许可证
 

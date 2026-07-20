@@ -140,6 +140,39 @@ pub fn run() {
                 }
             });
 
+            // Geo data auto-update: refresh in the background when the
+            // files are missing or older than a week. The new data is
+            // picked up the next time the core starts.
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = app_handle.state::<AppState>();
+                    let geo = state.store.read().await.config().geo.clone();
+                    let manager = vulpini_core::geo::GeoManager::new(geo);
+                    let stale = [manager.geosite_path(), manager.geoip_path()]
+                        .iter()
+                        .any(|p| match std::fs::metadata(p) {
+                            Ok(m) => m
+                                .modified()
+                                .ok()
+                                .and_then(|t| t.elapsed().ok())
+                                .is_none_or(|age| age > std::time::Duration::from_secs(7 * 86400)),
+                            Err(_) => true,
+                        });
+                    if !stale {
+                        return;
+                    }
+                    match manager.update().await {
+                        Ok((site, ip)) => tracing::info!(
+                            geosite = site,
+                            geoip = ip,
+                            "geo data auto-updated"
+                        ),
+                        Err(e) => tracing::warn!(error = %e, "geo auto-update failed"),
+                    }
+                });
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())

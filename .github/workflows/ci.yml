@@ -37,6 +37,9 @@ jobs:
         shell: bash
         run: "! cargo tree --workspace | grep -q aws-lc"
 
+      - name: License audit
+        uses: EmbarkStudios/cargo-deny-action@v2
+
   frontend:
     runs-on: windows-latest
     defaults:
