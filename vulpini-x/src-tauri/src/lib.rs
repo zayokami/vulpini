@@ -163,11 +163,9 @@ pub fn run() {
                         return;
                     }
                     match manager.update().await {
-                        Ok((site, ip)) => tracing::info!(
-                            geosite = site,
-                            geoip = ip,
-                            "geo data auto-updated"
-                        ),
+                        Ok((site, ip)) => {
+                            tracing::info!(geosite = site, geoip = ip, "geo data auto-updated")
+                        }
                         Err(e) => tracing::warn!(error = %e, "geo auto-update failed"),
                     }
                 });
