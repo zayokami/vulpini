@@ -202,6 +202,43 @@ async fn socks5_to_shadowsocks_full_stack() {
         .expect("drain hung");
 }
 
+#[tokio::test]
+async fn delay_test_through_real_outbound() {
+    let ss_server = start_reference_ss_server("delay-pw").await;
+
+    // Local HTTP fixture returning 204; the reference SS server maps any
+    // domain target to loopback, so the probe crosses the full SS path.
+    let http = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let http_addr = http.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let (mut s, _) = http.accept().await.unwrap();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 4096];
+                let _ = s.read(&mut buf).await;
+                let _ = s
+                    .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+                    .await;
+            });
+        }
+    });
+
+    let node = NodeConfig::Shadowsocks(SsConfig {
+        server: ss_server.ip().to_string(),
+        port: ss_server.port(),
+        method: SsMethod::Aes256Gcm,
+        password: "delay-pw".into(),
+    });
+    let probe = format!("http://probe.test:{}/generate_204", http_addr.port());
+    let delay = vulpini_core::delay::test_delay(&node, &probe, Duration::from_secs(5))
+        .await
+        .expect("delay probe failed");
+    assert!(
+        delay < Duration::from_secs(3),
+        "loopback probe took {delay:?}"
+    );
+}
+
 /// The SS stream must reassemble ciphertext arriving in arbitrary fragments.
 #[test]
 fn reassembly_proptest() {

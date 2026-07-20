@@ -29,6 +29,10 @@ pub struct AppConfig {
     pub subscriptions: Vec<Subscription>,
     #[serde(default)]
     pub geo: GeoConfig,
+    /// Last measured delay per node (stable_key -> milliseconds). Joined
+    /// by stable_key so subscription refreshes keep the history.
+    #[serde(default)]
+    pub delay_history: std::collections::HashMap<String, u64>,
 }
 
 fn default_mode() -> Mode {
@@ -50,6 +54,7 @@ impl Default for AppConfig {
             nodes: Vec::new(),
             subscriptions: Vec::new(),
             geo: GeoConfig::default(),
+            delay_history: std::collections::HashMap::new(),
         }
     }
 }

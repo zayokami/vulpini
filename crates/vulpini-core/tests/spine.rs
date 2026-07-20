@@ -156,6 +156,37 @@ async fn half_close_propagates_and_terminates() {
 }
 
 #[tokio::test]
+async fn stats_events_tick_with_traffic() {
+    let echo = start_echo(None).await;
+    let (engine, proxy) = start_engine().await;
+    let mut events = engine.events();
+
+    let mut s = socks5_connect(proxy, echo).await;
+    let payload = b"count these bytes please";
+    s.write_all(payload).await.unwrap();
+    let mut buf = vec![0u8; payload.len()];
+    s.read_exact(&mut buf).await.unwrap();
+
+    // Within ~2.5s the 1 Hz tick must report nonzero traffic and conns.
+    let deadline = std::time::Instant::now() + Duration::from_millis(2500);
+    let snapshot = loop {
+        let ev = tokio::time::timeout_at(deadline.into(), events.recv())
+            .await
+            .expect("no stats tick received")
+            .unwrap();
+        let vulpini_core::stats::CoreEvent::Stats(snap) = ev;
+        if snap.total_up > 0 && snap.total_down > 0 {
+            break snap;
+        }
+    };
+    assert!(snapshot.active_connections >= 1);
+    assert!(snapshot.up_rate > 0 || snapshot.total_up > 0);
+
+    drop(s);
+    engine.shutdown().await;
+}
+
+#[tokio::test]
 async fn unreachable_target_reports_error() {
     let (engine, proxy) = start_engine().await;
 

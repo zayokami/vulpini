@@ -179,7 +179,7 @@ async fn main() -> Result<()> {
         Command::List => cmd_list(&cli.config)?,
         Command::Select { node } => cmd_select(&cli.config, &node)?,
         Command::Mode { mode } => cmd_mode(&cli.config, mode)?,
-        Command::Delay { .. } => anyhow::bail!("delay is not implemented yet — see milestone M8"),
+        Command::Delay { all } => cmd_delay(&cli.config, all).await?,
         Command::Sub { action } => match action {
             SubAction::Add { name, url } => {
                 let mut store = ConfigStore::load(&cli.config)?;
@@ -321,8 +321,8 @@ fn cmd_list(path: &std::path::Path) -> Result<()> {
         return Ok(());
     }
     println!(
-        "{:<10} {:<10} {:<24} {:<32} SOURCE",
-        "ID", "PROTO", "NAME", "SERVER"
+        "{:<10} {:<10} {:<24} {:<32} {:<10} SOURCE",
+        "ID", "PROTO", "NAME", "SERVER", "DELAY"
     );
     for node in &config.nodes {
         let active = if config.active_node == Some(node.id) {
@@ -334,8 +334,13 @@ fn cmd_list(path: &std::path::Path) -> Result<()> {
             NodeSource::Manual => "manual".to_string(),
             NodeSource::Subscription(id) => format!("sub:{}", &id.simple().to_string()[..8]),
         };
+        let delay = config
+            .delay_history
+            .get(&node.stable_key)
+            .map(|ms| format!("{ms}ms"))
+            .unwrap_or_else(|| "-".into());
         println!(
-            "{}{:<9} {:<10} {:<24} {:<32} {}",
+            "{}{:<9} {:<10} {:<24} {:<32} {:<10} {}",
             active,
             node.id.short(),
             node.config.protocol(),
@@ -344,9 +349,72 @@ fn cmd_list(path: &std::path::Path) -> Result<()> {
                 &format!("{}:{}", node.config.server(), node.config.port()),
                 32
             ),
+            delay,
             source
         );
     }
+    Ok(())
+}
+
+async fn cmd_delay(path: &std::path::Path, all: bool) -> Result<()> {
+    let mut store = ConfigStore::load(path)?;
+    let targets: Vec<(vulpini_core::NodeId, vulpini_core::NodeConfig)> = if all {
+        store
+            .config()
+            .nodes
+            .iter()
+            .map(|n| (n.id, n.config.clone()))
+            .collect()
+    } else {
+        match store.config().active_node {
+            Some(id) => match store.config().nodes.iter().find(|n| n.id == id) {
+                Some(n) => vec![(n.id, n.config.clone())],
+                None => anyhow::bail!("active node not found in node list"),
+            },
+            None => anyhow::bail!("no active node (use 'select' first, or 'delay --all')"),
+        }
+    };
+    if targets.is_empty() {
+        println!("no nodes to test");
+        return Ok(());
+    }
+
+    use futures::StreamExt;
+    let names: std::collections::HashMap<_, _> = store
+        .config()
+        .nodes
+        .iter()
+        .map(|n| (n.id, (n.name.clone(), n.stable_key.clone())))
+        .collect();
+
+    println!(
+        "testing {} node(s) via {} ...",
+        targets.len(),
+        vulpini_core::delay::DEFAULT_PROBE_URL
+    );
+    let mut results = vulpini_core::delay::test_all(
+        targets,
+        vulpini_core::delay::DEFAULT_PROBE_URL.to_string(),
+        vulpini_core::delay::DEFAULT_TIMEOUT,
+        8,
+    );
+    while let Some(result) = results.next().await {
+        let (name, stable_key) = names
+            .get(&result.node_id)
+            .map(|(n, k)| (n.clone(), k.clone()))
+            .unwrap_or_else(|| ("?".into(), String::new()));
+        match result.delay {
+            Ok(d) => {
+                println!("{name}: {} ms", d.as_millis());
+                store
+                    .config_mut()
+                    .delay_history
+                    .insert(stable_key, d.as_millis() as u64);
+            }
+            Err(e) => println!("{name}: FAIL ({e})"),
+        }
+    }
+    store.save()?;
     Ok(())
 }
 

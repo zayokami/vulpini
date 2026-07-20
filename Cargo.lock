@@ -3028,6 +3028,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
+ "futures",
  "tokio",
  "tracing-subscriber",
  "uuid",
@@ -3068,6 +3069,7 @@ dependencies = [
  "tokio-tungstenite",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "uuid",
  "vulpini-rules",
  "webpki-roots",
