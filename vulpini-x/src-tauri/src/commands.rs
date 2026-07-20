@@ -36,6 +36,8 @@ pub struct NodeView {
     server: String,
     port: u16,
     source: String,
+    /// Subscription uuid when source is a subscription; used for grouping.
+    source_id: Option<String>,
     delay_ms: Option<u64>,
     active: bool,
 }
@@ -206,6 +208,10 @@ pub async fn list_nodes(state: State<'_, AppState>) -> CmdResult<Vec<NodeView>> 
             source: match &n.source {
                 NodeSource::Manual => "manual".into(),
                 NodeSource::Subscription(_) => "subscription".into(),
+            },
+            source_id: match &n.source {
+                NodeSource::Manual => None,
+                NodeSource::Subscription(id) => Some(id.to_string()),
             },
             delay_ms: config.delay_history.get(&n.stable_key).copied(),
             active: config.active_node == Some(n.id),

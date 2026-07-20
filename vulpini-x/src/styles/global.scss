@@ -1,0 +1,848 @@
+@use 'tokens';
+@use 'mixins';
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: tokens.$font-ui;
+  font-size: tokens.$fs-body;
+  color: var(--text);
+  background: var(--bg);
+  user-select: none;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: tokens.$r-sm;
+}
+
+// ── App shell: titlebar / (sidebar + content) ──────────────────────────
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+}
+
+.app__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+// ── Titlebar (custom, frameless window) ────────────────────────────────
+.titlebar {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  background: var(--titlebar-bg);
+  border-bottom: 1px solid var(--divider);
+  flex-shrink: 0;
+}
+
+.titlebar__drag {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding-left: 14px;
+  font-size: tokens.$fs-small;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.titlebar__controls {
+  display: flex;
+  height: 100%;
+}
+
+.titlebar__btn {
+  width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+
+  &:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+
+  &--close:hover {
+    background: var(--error);
+    color: #ffffff;
+  }
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--divider);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.15s;
+
+  &--collapsed {
+    width: 72px;
+
+    .sidebar__logo-text,
+    .sidebar__item-label {
+      display: none;
+    }
+
+    .sidebar__logo {
+      justify-content: center;
+    }
+  }
+}
+
+.sidebar__logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  height: 52px;
+}
+
+.sidebar__logo-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: tokens.$r-md;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sidebar__logo-text {
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-size: tokens.$fs-body;
+}
+
+.sidebar__nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  @include mixins.scrollbar;
+}
+
+.sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: tokens.$r-lg;
+  color: var(--text-secondary);
+  font-size: tokens.$fs-body;
+  text-align: left;
+  transition:
+    background 0.12s,
+    color 0.12s;
+
+  &:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+
+  &--active {
+    background: var(--accent-soft);
+    color: var(--text);
+    font-weight: 500;
+
+    .sidebar__item-icon {
+      color: var(--accent);
+    }
+  }
+}
+
+.sidebar__item-icon {
+  flex-shrink: 0;
+  display: flex;
+}
+
+// ── Sidebar traffic widget ─────────────────────────────────────────────
+.traffic {
+  border-top: 1px solid var(--divider);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.traffic__graph {
+  width: 100%;
+  height: 56px;
+  border-radius: tokens.$r-md;
+  background: var(--bg-card);
+}
+
+.traffic__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: tokens.$fs-small;
+  color: var(--text-secondary);
+}
+
+.traffic__value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+// ── Content / BasePage ─────────────────────────────────────────────────
+.content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  @include mixins.scrollbar;
+}
+
+.page {
+  max-width: 960px;
+  padding: 0 20px 24px;
+}
+
+.page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 58px;
+  flex-shrink: 0;
+}
+
+.page__title {
+  font-size: tokens.$fs-title;
+  font-weight: 700;
+}
+
+.page__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+// ── Shared primitives ──────────────────────────────────────────────────
+.card {
+  @include mixins.card;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: tokens.$fs-section;
+  font-weight: 700;
+}
+
+.card__subtitle {
+  font-size: tokens.$fs-small;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+
+.small {
+  font-size: tokens.$fs-small;
+}
+
+.mono {
+  font-family: tokens.$font-mono;
+}
+
+.error-text {
+  color: var(--error);
+}
+
+.ok-text {
+  color: var(--success);
+}
+
+// Buttons: quiet (borderless, hover bg), bordered (outline), primary.
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: tokens.$r-sm;
+  font-size: tokens.$fs-body;
+  color: var(--text-secondary);
+  transition:
+    background 0.12s,
+    color 0.12s;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  &--primary {
+    background: var(--accent);
+    color: #ffffff;
+
+    &:hover:not(:disabled) {
+      background: var(--accent-strong);
+      color: #ffffff;
+    }
+  }
+
+  &--danger {
+    color: var(--error);
+
+    &:hover:not(:disabled) {
+      background: var(--error-soft);
+      color: var(--error);
+    }
+  }
+
+  &--bordered {
+    border: 1px solid var(--divider-strong);
+    color: var(--text);
+  }
+
+  &--sm {
+    height: 24px;
+    padding: 0 8px;
+    font-size: tokens.$fs-small;
+  }
+
+  &--active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 500;
+  }
+}
+
+.btn-group {
+  display: inline-flex;
+  background: var(--bg-input);
+  border-radius: tokens.$r-md;
+  padding: 2px;
+  gap: 2px;
+
+  .btn {
+    height: 26px;
+    border-radius: tokens.$r-sm;
+  }
+}
+
+// Inputs
+.input {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: tokens.$r-sm;
+  border: 1px solid var(--divider-strong);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: tokens.$fs-body;
+
+  &::placeholder {
+    color: var(--text-tertiary);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+}
+
+textarea.input {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+// Switch (iOS capsule)
+.switch {
+  @include mixins.switch;
+}
+
+// Badge
+.badge {
+  @include mixins.badge;
+
+  &--accent {
+    color: var(--accent);
+    opacity: 1;
+  }
+}
+
+// Empty state
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 0;
+  color: var(--text-tertiary);
+  font-size: tokens.$fs-small;
+}
+
+// Toast
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--divider-strong);
+  border-radius: tokens.$r-md;
+  padding: 8px 16px;
+  font-size: tokens.$fs-small;
+  color: var(--text);
+  z-index: 100;
+}
+
+// Spinner
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--divider-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Delay health colors (thresholds from the design system)
+.delay--good {
+  color: var(--success);
+}
+
+.delay--mid {
+  color: var(--accent);
+}
+
+.delay--bad {
+  color: var(--warning);
+}
+
+.delay--timeout {
+  color: var(--error);
+}
+
+.delay--none {
+  color: var(--text-tertiary);
+}
+
+// ── SettingItem rows ───────────────────────────────────────────────────
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--divider);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &[role='button'] {
+    cursor: pointer;
+  }
+}
+
+.setting-item__label {
+  font-size: tokens.$fs-body;
+}
+
+.setting-item__desc {
+  font-size: tokens.$fs-small;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.setting-item__control {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+// ── Dialog ─────────────────────────────────────────────────────────────
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.dialog {
+  width: 440px;
+  max-width: calc(100vw - 48px);
+  max-height: 80vh;
+  background: var(--bg-card);
+  border-radius: tokens.$r-xl;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+}
+
+.dialog__title {
+  font-size: tokens.$fs-section;
+  font-weight: 700;
+}
+
+.dialog__body {
+  padding: 0 16px 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  @include mixins.scrollbar;
+}
+
+.dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--divider);
+}
+
+// ── Home dashboard ─────────────────────────────────────────────────────
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+
+  @media (max-width: 720px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home-card--wide {
+  grid-column: 1 / -1;
+}
+
+.home-card__icon {
+  @include mixins.icon-box;
+}
+
+.home-card__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card--clickable {
+  cursor: pointer;
+  transition: background 0.12s;
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+}
+
+.home-node-name {
+  font-size: tokens.$fs-section;
+  font-weight: 600;
+  @include mixins.truncate;
+}
+
+.home-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.home-stat {
+  background: var(--bg-input);
+  border-radius: tokens.$r-md;
+  padding: 10px 12px;
+}
+
+.home-stat__value {
+  font-size: tokens.$fs-section;
+  font-weight: 600;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+// ── Nodes page ─────────────────────────────────────────────────────────
+.node-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.node-group__header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  background: var(--bg);
+}
+
+.node-group__title {
+  font-size: tokens.$fs-section;
+  font-weight: 700;
+}
+
+.node-group__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.node-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  background: var(--bg-card);
+  border-radius: tokens.$r-md;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-hover);
+
+    .node-row__delay {
+      display: none;
+    }
+
+    .node-row__hover-actions {
+      display: flex;
+    }
+  }
+
+  &--active {
+    @include mixins.selected-bar;
+  }
+}
+
+.node-row__name {
+  flex: 1;
+  @include mixins.truncate;
+  font-size: tokens.$fs-body;
+}
+
+.node-row__right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.node-row__hover-actions {
+  display: none;
+  gap: 4px;
+}
+
+// ── Subscriptions page ─────────────────────────────────────────────────
+.sub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.sub-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sub-card__name {
+  font-size: tokens.$fs-section;
+  font-weight: 600;
+  @include mixins.truncate;
+}
+
+.sub-card__url {
+  @include mixins.truncate;
+}
+
+.sub-card__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+// ── Rules page ─────────────────────────────────────────────────────────
+.rules-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rules-hint {
+  font-family: tokens.$font-mono;
+  font-size: tokens.$fs-small;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border-radius: tokens.$r-sm;
+  padding: 3px 8px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--accent);
+  }
+}
+
+.rules-editor {
+  font-size: tokens.$fs-small;
+  line-height: 1.7;
+}
+
+// ── Logs page ──────────────────────────────────────────────────────────
+.log-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-tertiary);
+}
+
+.log-search__input {
+  width: 150px;
+}
+
+.log-list {
+  background: var(--bg-card);
+  border-radius: tokens.$r-lg;
+  padding: 8px 12px;
+  overflow-y: auto;
+  min-height: 320px;
+  max-height: calc(100vh - 220px);
+  display: flex;
+  flex-direction: column;
+  @include mixins.scrollbar;
+}
+
+.log-entry {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: tokens.$fs-small;
+  border-bottom: 1px solid var(--divider);
+  line-height: 1.5;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.log-entry__level {
+  width: 48px;
+  flex-shrink: 0;
+  font-weight: 600;
+  font-size: tokens.$fs-badge;
+  padding-top: 2px;
+}
+
+.log-entry--error .log-entry__level {
+  color: var(--error);
+}
+
+.log-entry--warn .log-entry__level {
+  color: var(--warning);
+}
+
+.log-entry--info .log-entry__level {
+  color: var(--accent);
+}
+
+.log-entry--debug .log-entry__level {
+  color: var(--text-tertiary);
+}
+
+.log-entry__target {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.log-entry__msg {
+  color: var(--text);
+  word-break: break-all;
+  user-select: text;
+}
+
+// Flex row utility used by several pages.
+.row {
+  display: flex;
+  align-items: center;
+}

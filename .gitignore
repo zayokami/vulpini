@@ -41,3 +41,4 @@ pnpm-debug.log*
 vulpini-x/src-tauri/target/
 vulpini-x/src-tauri/gen/
 vulpini-x/src-tauri/binaries/
+vulpini-x/tsconfig.tsbuildinfo

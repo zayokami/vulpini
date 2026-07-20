@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import TitleBar from './components/TitleBar';
+import Sidebar, { type PageId } from './components/Sidebar';
 import { useApp } from './store';
 import Home from './pages/Home';
 import Nodes from './pages/Nodes';
@@ -7,21 +9,14 @@ import Rules from './pages/Rules';
 import Logs from './pages/Logs';
 import Settings from './pages/Settings';
 
-const TABS = [
-  { id: 'home', label: 'HOME' },
-  { id: 'nodes', label: 'NODES' },
-  { id: 'subs', label: 'SUBSCRIPTIONS' },
-  { id: 'rules', label: 'RULES' },
-  { id: 'logs', label: 'LOGS' },
-  { id: 'settings', label: 'SETTINGS' },
-] as const;
-
-type TabId = (typeof TABS)[number]['id'];
+const COLLAPSE_KEY = 'vulpini.sidebar_collapsed';
 
 export default function App() {
-  const [tab, setTab] = useState<TabId>('home');
+  const [page, setPage] = useState<PageId>('home');
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(COLLAPSE_KEY) === '1',
+  );
   const init = useApp((s) => s.init);
-  const status = useApp((s) => s.status);
   const notice = useApp((s) => s.notice);
   const clearNotice = useApp((s) => s.clearNotice);
 
@@ -36,36 +31,23 @@ export default function App() {
     return () => clearTimeout(t);
   }, [notice, clearNotice]);
 
+  const toggleCollapsed = (value: boolean) => {
+    setCollapsed(value);
+    localStorage.setItem(COLLAPSE_KEY, value ? '1' : '0');
+  };
+
   return (
     <div className="app">
-      <header className="header">
-        <div className="logo">
-          <span className="logo-text">VULPINI</span>
-          <span className="logo-sub">X</span>
-        </div>
-        <div className={`status-pill ${status?.running ? 'on' : 'off'}`}>
-          {status?.running ? 'RUNNING' : 'STOPPED'}
-        </div>
-      </header>
-      <nav className="nav">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={`nav-item ${tab === t.id ? 'active' : ''}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
-      <main className="main">
-        {tab === 'home' && <Home />}
-        {tab === 'nodes' && <Nodes />}
-        {tab === 'subs' && <Subscriptions />}
-        {tab === 'rules' && <Rules />}
-        {tab === 'logs' && <Logs />}
-        {tab === 'settings' && <Settings />}
-      </main>
+      <TitleBar />
+      <div className="app__body">
+        <Sidebar page={page} collapsed={collapsed} onNavigate={setPage} />
+        {page === 'home' && <Home onNavigate={setPage} />}
+        {page === 'nodes' && <Nodes />}
+        {page === 'subs' && <Subscriptions />}
+        {page === 'rules' && <Rules />}
+        {page === 'logs' && <Logs />}
+        {page === 'settings' && <Settings collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />}
+      </div>
       {notice && <div className="toast">{notice}</div>}
     </div>
   );

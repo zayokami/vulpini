@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import BasePage from '../components/BasePage';
 import { useApp } from '../store';
 
 export default function Rules() {
@@ -7,12 +8,12 @@ export default function Rules() {
 
   const [text, setText] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (config) setText(config.rules.join('\n'));
-    // Only populate from config on first load of this page.
+    if (config && !dirty) setText(config.rules.join('\n'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [config]);
 
   const save = async () => {
     const rules = text
@@ -21,36 +22,50 @@ export default function Rules() {
       .filter((l) => l.length > 0 && !l.startsWith('#'));
     try {
       await patchConfig({ rules });
-      setMessage('saved');
+      setDirty(false);
+      setMessage('已保存并生效');
     } catch (e) {
-      setMessage(`error: ${e}`);
+      setMessage(`保存失败: ${e}`);
     }
   };
 
   return (
-    <div className="page">
+    <BasePage
+      title="规则"
+      actions={
+        <button className="btn btn--primary" disabled={!dirty} onClick={() => void save()}>
+          保存规则
+        </button>
+      }
+    >
       <div className="card">
-        <div className="card-title">RULES (clash syntax, one per line)</div>
-        <div className="muted help">
-          DOMAIN,example.com,direct · DOMAIN-SUFFIX,google.com,proxy · DOMAIN-KEYWORD,ads,block ·
-          IP-CIDR,10.0.0.0/8,direct · GEOIP,cn,direct · GEOSITE,cn,direct · PORT,53,block ·
-          MATCH,proxy — evaluated in order; domains are never resolved locally, so IP rules only
-          match literal IPs. The last rule is usually MATCH.
+        <div className="card__subtitle">
+          每行一条，按顺序匹配。域名不会本地解析，IP 类规则只匹配字面 IP；最后一条通常是 MATCH。
+        </div>
+        <div className="rules-hints">
+          {['DOMAIN,example.com,direct', 'DOMAIN-SUFFIX,google.com,proxy', 'DOMAIN-KEYWORD,ads,block', 'IP-CIDR,10.0.0.0/8,direct', 'GEOIP,cn,direct', 'GEOSITE,cn,direct', 'PORT,53,block', 'MATCH,proxy'].map(
+            (hint) => (
+              <code key={hint} className="rules-hint" onClick={() => {
+                setText((t) => (t ? `${t}\n${hint}` : hint));
+                setDirty(true);
+              }}>
+                {hint}
+              </code>
+            ),
+          )}
         </div>
         <textarea
-          className="input area mono"
-          rows={12}
+          className="input area mono rules-editor"
+          rows={14}
           value={text}
-          onChange={(e) => setText(e.target.value)}
           spellCheck={false}
+          onChange={(e) => {
+            setText(e.target.value);
+            setDirty(true);
+          }}
         />
-        <div className="row gap">
-          <button className="btn btn-primary" onClick={() => void save()}>
-            SAVE RULES
-          </button>
-          {message && <span className="muted">{message}</span>}
-        </div>
+        {message && <div className="muted small">{message}</div>}
       </div>
-    </div>
+    </BasePage>
   );
 }

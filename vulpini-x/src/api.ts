@@ -17,6 +17,7 @@ export interface NodeView {
   server: string;
   port: number;
   source: string;
+  source_id: string | null;
   delay_ms: number | null;
   active: boolean;
 }

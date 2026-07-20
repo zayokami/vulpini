@@ -4,6 +4,7 @@ import {
   onEvent,
   type ConfigView,
   type CoreStatus,
+  type DelayResultPayload,
   type LogEvent,
   type Mode,
   type NodeView,
@@ -11,6 +12,7 @@ import {
   type SubscriptionView,
   type SysProxyView,
 } from './api';
+import { useDelay } from './store/delay';
 
 interface AppState {
   status: CoreStatus | null;
@@ -78,7 +80,11 @@ export const useApp = create<AppState>((set, get) => ({
     const snap = await api.getStatsSnapshot().catch(() => null);
     set({ stats: snap });
   },
-  refreshNodes: async () => set({ nodes: await api.listNodes() }),
+  refreshNodes: async () => {
+    const nodes = await api.listNodes();
+    set({ nodes });
+    useDelay.getState().reset(nodes.map((n) => ({ id: n.id, delay_ms: n.delay_ms })));
+  },
   refreshSubs: async () => set({ subscriptions: await api.listSubscriptions() }),
   refreshStatus: async () => set({ status: await api.coreStatus() }),
   refreshConfig: async () => set({ config: await api.getConfig() }),
@@ -139,8 +145,16 @@ export const useApp = create<AppState>((set, get) => ({
     await api.testAllDelays();
   },
   toggleSysproxy: async (enabled) => {
-    const view = await api.setSystemProxy(enabled);
-    set({ sysproxy: view });
+    // Optimistic update with rollback (GuardState pattern).
+    const previous = get().sysproxy;
+    if (previous) set({ sysproxy: { ...previous, enabled } });
+    try {
+      const view = await api.setSystemProxy(enabled);
+      set({ sysproxy: view });
+    } catch (e) {
+      if (previous) set({ sysproxy: previous });
+      set({ notice: `系统代理切换失败: ${e}` });
+    }
   },
   patchConfig: async (patch) => {
     const config = await api.patchConfig(patch);
@@ -161,7 +175,10 @@ export const useApp = create<AppState>((set, get) => ({
     );
     await onEvent<unknown>('core:status', () => void get().refreshStatus());
     await onEvent<unknown>('nodes:changed', () => void get().refreshNodes());
-    await onEvent<{ delay_ms: number | null }>('delay:result', () => void get().refreshNodes());
+    await onEvent<DelayResultPayload>('delay:result', (payload) => {
+      useDelay.getState().handleResult(payload);
+      void get().refreshNodes();
+    });
     await onEvent<unknown>('subscription:updated', () => void get().refreshSubs());
   },
 }));

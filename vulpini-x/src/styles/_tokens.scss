@@ -1,0 +1,72 @@
+// Design tokens — iOS semantic palette, light & dark.
+// Hierarchy comes from background contrast ONLY. No shadows anywhere.
+
+$font-ui: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei UI', 'Microsoft YaHei',
+  Roboto, 'Helvetica Neue', Arial, sans-serif;
+$font-mono: 'JetBrains Mono', 'Fira Code', Consolas, Menlo, 'Courier New', monospace;
+
+// Type scale
+$fs-title: 20px;
+$fs-section: 16px;
+$fs-body: 14px;
+$fs-sub: 13px;
+$fs-small: 12px;
+$fs-badge: 10px;
+
+// Radius ladder: badge / button / small card / card / nav block
+$r-badge: 2px;
+$r-sm: 4px;
+$r-md: 6px;
+$r-lg: 8px;
+$r-xl: 12px;
+
+:root,
+:root[data-theme='light'] {
+  --accent: #007aff;
+  --accent-strong: #0063d1;
+  --accent-soft: rgba(0, 122, 255, 0.15);
+  --accent-softer: rgba(0, 122, 255, 0.08);
+  --error: #ff3b30;
+  --error-soft: rgba(255, 59, 48, 0.12);
+  --warning: #ff9500;
+  --warning-soft: rgba(255, 149, 0, 0.14);
+  --success: #06943d;
+  --success-soft: rgba(6, 148, 61, 0.12);
+  --text: #000000;
+  --text-secondary: rgba(60, 60, 67, 0.6);
+  --text-tertiary: rgba(60, 60, 67, 0.33);
+  --bg: #ececec;
+  --bg-card: #ffffff;
+  --bg-input: #f5f5f5;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --divider: rgba(0, 0, 0, 0.06);
+  --divider-strong: rgba(0, 0, 0, 0.12);
+  --scrollbar: #c1c1c1;
+  --titlebar-bg: #ececec;
+  --sidebar-bg: #ececec;
+}
+
+:root[data-theme='dark'] {
+  --accent: #0a84ff;
+  --accent-strong: #409cff;
+  --accent-soft: rgba(10, 132, 255, 0.35);
+  --accent-softer: rgba(10, 132, 255, 0.18);
+  --error: #ff453a;
+  --error-soft: rgba(255, 69, 58, 0.16);
+  --warning: #ff9f0a;
+  --warning-soft: rgba(255, 159, 10, 0.18);
+  --success: #30d158;
+  --success-soft: rgba(48, 209, 88, 0.16);
+  --text: #ffffff;
+  --text-secondary: rgba(235, 235, 245, 0.6);
+  --text-tertiary: rgba(235, 235, 245, 0.33);
+  --bg: #2e303d;
+  --bg-card: #1e1f27;
+  --bg-input: #2e303d;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --divider: rgba(255, 255, 255, 0.06);
+  --divider-strong: rgba(255, 255, 255, 0.12);
+  --scrollbar: #555555;
+  --titlebar-bg: #2e303d;
+  --sidebar-bg: #2e303d;
+}

@@ -1,0 +1,112 @@
+@use 'tokens';
+
+// White card on gray page — the ONLY layering technique (no shadows).
+@mixin card {
+  background: var(--bg-card);
+  border-radius: tokens.$r-lg;
+  padding: 12px 16px;
+}
+
+// The universal selected state: 3px accent bar + soft accent wash.
+@mixin selected-bar {
+  position: relative;
+  background: var(--accent-soft);
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    border-radius: 0 tokens.$r-sm tokens.$r-sm 0;
+  }
+}
+
+// Outlined mini badge (protocol types, capability tags).
+@mixin badge($color: var(--text-secondary)) {
+  display: inline-flex;
+  align-items: center;
+  font-size: tokens.$fs-badge;
+  line-height: 1;
+  color: $color;
+  border: 1px solid currentColor;
+  border-radius: tokens.$r-sm;
+  padding: 2px 4px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+// iOS-style 42x26 capsule switch (input checkbox driven).
+@mixin switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 26px;
+  border-radius: 13px;
+  background: #bbbbbb;
+  transition: background 0.3s;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #ffffff;
+    transition: transform 0.25s;
+  }
+
+  &.on {
+    background: var(--accent);
+    &::after {
+      transform: translateX(16px);
+    }
+  }
+
+  &.disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  [data-theme='dark'] & {
+    background: #39393d;
+  }
+}
+
+@mixin truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin scrollbar {
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--scrollbar);
+    border-radius: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+// Icon container used by dashboard cards: 38x38 rounded box in soft tint.
+@mixin icon-box($size: 38px) {
+  width: $size;
+  height: $size;
+  border-radius: tokens.$r-md;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-softer);
+  color: var(--accent);
+  flex-shrink: 0;
+}
