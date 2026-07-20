@@ -2,8 +2,9 @@ import BasePage from '../components/BasePage';
 import Switch from '../components/Switch';
 import DelayBadge from '../components/DelayBadge';
 import { useApp } from '../store';
+import { delayStateOf, useDelay } from '../store/delay';
 import type { Mode } from '../api';
-import { Activity, Globe, Network, Power, Server } from 'lucide-react';
+import { Activity, AlertTriangle, Globe, Network, Power, Server } from 'lucide-react';
 
 const MODES: { id: Mode; label: string }[] = [
   { id: 'rule', label: '规则' },
@@ -37,9 +38,14 @@ export default function Home({ onNavigate }: { onNavigate: (page: 'nodes') => vo
   const stopCore = useApp((s) => s.stopCore);
   const setMode = useApp((s) => s.setMode);
   const toggleSysproxy = useApp((s) => s.toggleSysproxy);
+  const delayEntries = useDelay((s) => s.entries);
 
   const running = status?.running ?? false;
   const activeNode = nodes.find((n) => n.active);
+  const activeDelay = activeNode ? delayStateOf(delayEntries, activeNode.id) : null;
+  const nodeUnhealthy =
+    activeDelay?.kind === 'timeout' || activeDelay?.kind === 'error';
+  const proxyWithoutCore = (sysproxy?.enabled ?? false) && !running;
 
   return (
     <BasePage title="首页">
@@ -103,6 +109,12 @@ export default function Home({ onNavigate }: { onNavigate: (page: 'nodes') => vo
           <div className="muted small">
             {sysproxy?.enabled ? sysproxy.server ?? '' : '未启用'}
           </div>
+          {proxyWithoutCore && (
+            <div className="home-warning">
+              <AlertTriangle size={14} />
+              核心未运行，系统代理开启状态下无法联网
+            </div>
+          )}
         </div>
 
         <div className="card card--clickable" onClick={() => onNavigate('nodes')}>
@@ -122,12 +134,20 @@ export default function Home({ onNavigate }: { onNavigate: (page: 'nodes') => vo
                 {activeNode.server}:{activeNode.port} ·{' '}
                 <DelayBadge
                   state={
-                    activeNode.delay_ms != null
-                      ? { kind: 'ok', ms: activeNode.delay_ms }
-                      : { kind: 'none' }
+                    activeDelay && activeDelay.kind !== 'none'
+                      ? activeDelay
+                      : activeNode.delay_ms != null
+                        ? { kind: 'ok', ms: activeNode.delay_ms }
+                        : { kind: 'none' }
                   }
                 />
               </div>
+              {nodeUnhealthy && (
+                <div className="home-warning">
+                  <AlertTriangle size={14} />
+                  当前节点不可用，建议测速后更换
+                </div>
+              )}
             </>
           ) : (
             <div className="muted small">未选择节点，点击前往代理页</div>

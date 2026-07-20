@@ -861,3 +861,15 @@ textarea.input {
   display: flex;
   align-items: center;
 }
+
+// Warning line inside dashboard cards (dangerous states).
+.home-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: tokens.$fs-small;
+  color: var(--error);
+  background: var(--error-soft);
+  border-radius: tokens.$r-md;
+  padding: 6px 10px;
+}
