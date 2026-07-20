@@ -5,6 +5,7 @@ members = [
     "crates/vulpini-rules",
     "crates/vulpini-sysproxy",
     "crates/vulpini-cli",
+    "vulpini-x/src-tauri",
 ]
 
 [workspace.package]

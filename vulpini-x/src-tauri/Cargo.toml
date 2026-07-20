@@ -1,0 +1,21 @@
+[package]
+name = "vulpini-x"
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+authors = ["zayoka"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+vulpini-core = { path = "../../crates/vulpini-core" }
+vulpini-sysproxy = { path = "../../crates/vulpini-sysproxy" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+tokio = { version = "1", features = ["sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures = "0.3"
