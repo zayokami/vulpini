@@ -29,13 +29,16 @@ pub struct UpdateOutcome {
     pub skipped: usize,
 }
 
-/// Fetch a subscription body with a browser-ish UA (some providers gate
-/// on clash-style user agents).
-pub async fn fetch(url: &str) -> Result<String, CoreError> {
+/// Fetch a subscription body. `user_agent` overrides the built-in
+/// vulpini UA (some providers gate on clash-style UAs).
+pub async fn fetch(url: &str, user_agent: Option<&str>) -> Result<String, CoreError> {
     crate::ensure_crypto_provider();
+    let ua = user_agent
+        .map(str::to_string)
+        .unwrap_or_else(|| concat!("vulpini/", env!("CARGO_PKG_VERSION")).to_string());
     let client = reqwest::Client::builder()
         .timeout(FETCH_TIMEOUT)
-        .user_agent(concat!("vulpini/", env!("CARGO_PKG_VERSION")))
+        .user_agent(ua)
         .build()?;
     let response = client.get(url).send().await?.error_for_status()?;
     Ok(response.text().await?)
@@ -119,16 +122,19 @@ fn parse_link_lines(lines: &[&str]) -> Result<ParseReport, CoreError> {
 /// Active selection survives via stable_key; delay history joins later.
 /// On fetch/parse failure the old nodes are kept and the error is stored.
 pub async fn update(store: &mut ConfigStore, sub_id: Uuid) -> Result<UpdateOutcome, CoreError> {
-    let url = store
-        .config()
-        .subscriptions
-        .iter()
-        .find(|s| s.id == sub_id)
-        .map(|s| s.url.clone())
-        .ok_or_else(|| CoreError::Protocol(format!("subscription {sub_id} not found")))?;
+    let (url, user_agent) = {
+        let config = store.config();
+        let url = config
+            .subscriptions
+            .iter()
+            .find(|s| s.id == sub_id)
+            .map(|s| s.url.clone())
+            .ok_or_else(|| CoreError::Protocol(format!("subscription {sub_id} not found")))?;
+        (url, config.proxy.subscription_user_agent.clone())
+    };
 
     let parsed = async {
-        let body = fetch(&url).await?;
+        let body = fetch(&url, user_agent.as_deref()).await?;
         parse_report(&body)
     }
     .await;

@@ -873,3 +873,43 @@ textarea.input {
   border-radius: tokens.$r-md;
   padding: 6px 10px;
 }
+
+// Settings page inputs
+.settings-input {
+  width: 280px;
+}
+
+.settings-input--sm {
+  width: 70px;
+}
+
+// Import error list (nodes page)
+.import-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.import-errors__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--error-soft);
+  border-radius: tokens.$r-sm;
+  padding: 4px 8px;
+}
+
+.import-errors__line {
+  flex: 1;
+  font-size: tokens.$fs-small;
+  color: var(--error);
+  @include mixins.truncate;
+}
+
+.import-errors__reason {
+  font-size: tokens.$fs-badge;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}

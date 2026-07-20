@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
-use vulpini_core::delay::{DEFAULT_PROBE_URL, DEFAULT_TIMEOUT};
 use vulpini_core::node::{Node, NodeId, NodeSource, parse_link};
 use vulpini_core::stats::StatsSnapshot;
 use vulpini_core::{EngineHandle, Mode};
@@ -70,6 +69,10 @@ pub struct ConfigView {
     mode: Mode,
     rules: Vec<String>,
     system_proxy_enabled: bool,
+    probe_url: String,
+    delay_timeout_secs: u64,
+    subscription_user_agent: Option<String>,
+    sysproxy_override: String,
 }
 
 #[derive(Deserialize)]
@@ -77,6 +80,10 @@ pub struct ConfigPatch {
     listen: Option<String>,
     mode: Option<String>,
     rules: Option<Vec<String>>,
+    probe_url: Option<String>,
+    delay_timeout_secs: Option<u64>,
+    subscription_user_agent: Option<String>,
+    sysproxy_override: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -143,7 +150,8 @@ pub async fn core_start(app: AppHandle, state: State<'_, AppState>) -> CmdResult
             tracing::warn!(error = %e, "failed to save config");
         }
         if store.config().system_proxy_enabled {
-            match vulpini_sysproxy::enable(&actual.to_string()) {
+            let bypass = store.config().proxy.sysproxy_override.clone();
+            match vulpini_sysproxy::enable(&actual.to_string(), &bypass) {
                 Ok(_) => tracing::info!(%actual, "system proxy re-pointed to new port"),
                 Err(e) => tracing::warn!(error = %e, "failed to re-point system proxy"),
             }
@@ -506,8 +514,14 @@ pub async fn test_node_delay(
             .cloned()
             .ok_or("node not found")?
     };
-    let result =
-        vulpini_core::delay::test_delay(&node.config, DEFAULT_PROBE_URL, DEFAULT_TIMEOUT).await;
+    let (probe_url, timeout) = {
+        let store = state.store.read().await;
+        (
+            store.config().proxy.probe_url.clone(),
+            std::time::Duration::from_secs(store.config().proxy.delay_timeout_secs),
+        )
+    };
+    let result = vulpini_core::delay::test_delay(&node.config, &probe_url, timeout).await;
 
     let (ms, error) = match &result {
         Ok(d) => (Some(d.as_millis() as u64), None),
@@ -553,10 +567,17 @@ pub async fn test_all_delays(app: AppHandle, state: State<'_, AppState>) -> CmdR
     use futures::StreamExt;
     let keys: std::collections::HashMap<_, _> =
         nodes.iter().map(|(id, _, k)| (*id, k.clone())).collect();
+    let (probe_url, timeout) = {
+        let store = state.store.read().await;
+        (
+            store.config().proxy.probe_url.clone(),
+            std::time::Duration::from_secs(store.config().proxy.delay_timeout_secs),
+        )
+    };
     let mut results = vulpini_core::delay::test_all(
         nodes.into_iter().map(|(id, c, _)| (id, c)).collect(),
-        DEFAULT_PROBE_URL.to_string(),
-        DEFAULT_TIMEOUT,
+        probe_url,
+        timeout,
         8,
     );
 
@@ -597,8 +618,14 @@ pub async fn set_system_proxy(
     enabled: bool,
 ) -> CmdResult<SysProxyView> {
     if enabled {
-        let listen = state.store.read().await.config().listen.to_string();
-        let previous = vulpini_sysproxy::enable(&listen).map_err(err)?;
+        let (listen, bypass) = {
+            let store = state.store.read().await;
+            (
+                store.config().listen.to_string(),
+                store.config().proxy.sysproxy_override.clone(),
+            )
+        };
+        let previous = vulpini_sysproxy::enable(&listen, &bypass).map_err(err)?;
         let mut store = state.store.write().await;
         // Keep the ORIGINAL backup if we already own the setting (self-heal).
         if !store.config().system_proxy_enabled || store.config().sysproxy_backup.is_none() {
@@ -662,6 +689,10 @@ pub async fn get_config(state: State<'_, AppState>) -> CmdResult<ConfigView> {
         mode: config.mode,
         rules: config.rules.clone(),
         system_proxy_enabled: config.system_proxy_enabled,
+        probe_url: config.proxy.probe_url.clone(),
+        delay_timeout_secs: config.proxy.delay_timeout_secs,
+        subscription_user_agent: config.proxy.subscription_user_agent.clone(),
+        sysproxy_override: config.proxy.sysproxy_override.clone(),
     })
 }
 
@@ -689,6 +720,31 @@ pub async fn patch_config(
             // Validate before persisting.
             vulpini_core::Router::from_config(config.mode, rules).map_err(err)?;
             config.rules = rules.clone();
+        }
+        if let Some(probe_url) = &patch.probe_url {
+            if !probe_url.starts_with("http://") {
+                return Err("测速地址必须是 http:// 开头".into());
+            }
+            config.proxy.probe_url = probe_url.clone();
+        }
+        if let Some(secs) = patch.delay_timeout_secs {
+            if !(1..=60).contains(&secs) {
+                return Err("测速超时必须在 1-60 秒之间".into());
+            }
+            config.proxy.delay_timeout_secs = secs;
+        }
+        if let Some(ua) = &patch.subscription_user_agent {
+            config.proxy.subscription_user_agent = if ua.trim().is_empty() {
+                None
+            } else {
+                Some(ua.trim().to_string())
+            };
+        }
+        if let Some(bypass) = &patch.sysproxy_override {
+            if bypass.trim().is_empty() {
+                return Err("绕过列表不能为空".into());
+            }
+            config.proxy.sysproxy_override = bypass.clone();
         }
         store.save().map_err(err)?;
     }

@@ -6,8 +6,6 @@ use winreg::enums::HKEY_CURRENT_USER;
 use super::{SysProxyError, SysProxyStatus};
 
 const SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
-/// Bypass list: never proxy local traffic.
-const OVERRIDE: &str = "localhost;127.*;10.*;172.16.*;192.168.*;<local>";
 
 fn open_key() -> Result<RegKey, SysProxyError> {
     RegKey::predef(HKEY_CURRENT_USER)
@@ -25,12 +23,12 @@ pub fn status() -> Result<SysProxyStatus, SysProxyError> {
     })
 }
 
-pub fn enable(server: &str) -> Result<SysProxyStatus, SysProxyError> {
+pub fn enable(server: &str, bypass: &str) -> Result<SysProxyStatus, SysProxyError> {
     let previous = status()?;
     let key = open_key()?;
     key.set_value("ProxyServer", &server)
         .map_err(|e| SysProxyError::Registry(e.to_string()))?;
-    key.set_value("ProxyOverride", &OVERRIDE.to_string())
+    key.set_value("ProxyOverride", &bypass.to_string())
         .map_err(|e| SysProxyError::Registry(e.to_string()))?;
     key.set_value("ProxyEnable", &1u32)
         .map_err(|e| SysProxyError::Registry(e.to_string()))?;

@@ -61,6 +61,7 @@ export default function Nodes() {
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<SortMode>('default');
   const [message, setMessage] = useState<string | null>(null);
+  const [importErrors, setImportErrors] = useState<{ line: string; error: string }[]>([]);
 
   const groups = useMemo<Group[]>(() => {
     const subName = new Map(subscriptions.map((s) => [s.id, s.name]));
@@ -83,10 +84,38 @@ export default function Nodes() {
   }, [nodes, subscriptions, filter]);
 
   const doImport = async () => {
-    if (!text.trim()) return;
-    const result = await importLinks(text);
-    setMessage(result);
-    setText('');
+    // Static format check first: obviously-invalid lines are rejected
+    // here with visible reasons and never reach the backend.
+    const lines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return;
+    const KNOWN_SCHEME = /^(ss|vmess|vless|trojan):\/\//i;
+    const preErrors: { line: string; error: string }[] = [];
+    const valid: string[] = [];
+    for (const line of lines) {
+      if (KNOWN_SCHEME.test(line)) {
+        valid.push(line);
+      } else {
+        preErrors.push({ line, error: '不是有效的分享链接（缺少 ss/vmess/vless/trojan 协议前缀）' });
+      }
+    }
+
+    let allErrors = preErrors;
+    let added = 0;
+    if (valid.length > 0) {
+      const result = await importLinks(valid.join('\n'));
+      added = result.added;
+      allErrors = [...preErrors, ...result.failed];
+    }
+    setImportErrors(allErrors);
+    setMessage(
+      valid.length === 0
+        ? '没有可导入的有效链接'
+        : `已导入 ${added} 条${allErrors.length > 0 ? `，${allErrors.length} 条失败` : ''}`,
+    );
+    if (added > 0) setText('');
   };
 
   const pasteClipboard = async () => {
@@ -166,6 +195,21 @@ export default function Nodes() {
           </button>
           {message && <span className="muted small">{message}</span>}
         </div>
+        {importErrors.length > 0 && (
+          <div className="import-errors">
+            {importErrors.map((e, i) => (
+              <div key={i} className="import-errors__item">
+                <span className="import-errors__line mono" title={e.line}>
+                  {e.line}
+                </span>
+                <span className="import-errors__reason">{e.error}</span>
+              </div>
+            ))}
+            <button className="btn btn--sm" onClick={() => setImportErrors([])}>
+              清除
+            </button>
+          </div>
+        )}
       </div>
 
       {groups.length === 0 && (

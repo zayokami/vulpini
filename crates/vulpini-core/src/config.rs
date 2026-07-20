@@ -40,6 +40,50 @@ pub struct AppConfig {
     /// Registry state before we enabled the system proxy.
     #[serde(default)]
     pub sysproxy_backup: Option<SysProxyBackup>,
+    /// Proxy behavior knobs, all user-editable.
+    #[serde(default)]
+    pub proxy: ProxySettings,
+}
+
+/// Proxy-related settings (the "代理" group in Settings).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxySettings {
+    /// URL used for delay testing (must be plain http://).
+    #[serde(default = "default_probe_url")]
+    pub probe_url: String,
+    /// Delay-test timeout in seconds.
+    #[serde(default = "default_delay_timeout_secs")]
+    pub delay_timeout_secs: u64,
+    /// User-Agent for subscription fetches; None = built-in vulpini UA.
+    /// Some providers gate on clash-style UAs.
+    #[serde(default)]
+    pub subscription_user_agent: Option<String>,
+    /// Windows ProxyOverride (bypass list), ';'-separated.
+    #[serde(default = "default_sysproxy_override")]
+    pub sysproxy_override: String,
+}
+
+impl Default for ProxySettings {
+    fn default() -> Self {
+        ProxySettings {
+            probe_url: default_probe_url(),
+            delay_timeout_secs: default_delay_timeout_secs(),
+            subscription_user_agent: None,
+            sysproxy_override: default_sysproxy_override(),
+        }
+    }
+}
+
+pub fn default_probe_url() -> String {
+    "http://www.gstatic.com/generate_204".to_string()
+}
+
+fn default_delay_timeout_secs() -> u64 {
+    5
+}
+
+pub fn default_sysproxy_override() -> String {
+    "localhost;127.*;10.*;172.16.*;192.168.*;<local>".to_string()
 }
 
 /// Mirror of the platform proxy state, persisted so a crash never
@@ -72,6 +116,7 @@ impl Default for AppConfig {
             delay_history: std::collections::HashMap::new(),
             system_proxy_enabled: false,
             sysproxy_backup: None,
+            proxy: ProxySettings::default(),
         }
     }
 }

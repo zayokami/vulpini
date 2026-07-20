@@ -44,6 +44,10 @@ export interface ConfigView {
   mode: Mode;
   rules: string[];
   system_proxy_enabled: boolean;
+  probe_url: string;
+  delay_timeout_secs: number;
+  subscription_user_agent: string | null;
+  sysproxy_override: string;
 }
 
 export interface SysProxyView {

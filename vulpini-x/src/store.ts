@@ -5,6 +5,7 @@ import {
   type ConfigView,
   type CoreStatus,
   type DelayResultPayload,
+  type ImportResult,
   type LogEvent,
   type Mode,
   type NodeView,
@@ -35,7 +36,7 @@ interface AppState {
   startCore: () => Promise<void>;
   stopCore: () => Promise<void>;
   setMode: (mode: Mode) => Promise<void>;
-  importLinks: (text: string) => Promise<string>;
+  importLinks: (text: string) => Promise<ImportResult>;
   deleteNode: (id: string) => Promise<void>;
   selectNode: (id: string) => Promise<void>;
   addSub: (name: string, url: string) => Promise<void>;
@@ -127,15 +128,9 @@ export const useApp = create<AppState>((set, get) => {
         await get().refreshConfig();
       }),
     importLinks: async (text) => {
-      try {
-        const result = await api.importShareLinks(text);
-        await get().refreshNodes();
-        const failNote = result.failed.length > 0 ? `，${result.failed.length} 条失败` : '';
-        return `已导入 ${result.added} 条${failNote}`;
-      } catch (e) {
-        set({ notice: `导入失败: ${e}` });
-        return '导入失败';
-      }
+      const result = await api.importShareLinks(text);
+      await get().refreshNodes();
+      return result;
     },
     deleteNode: (id) =>
       safely('删除节点', async () => {

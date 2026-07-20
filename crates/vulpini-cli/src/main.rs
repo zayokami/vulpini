@@ -279,7 +279,8 @@ async fn main() -> Result<()> {
             SysproxyAction::On => {
                 let mut store = ConfigStore::load(&cli.config)?;
                 let server = store.config().listen.to_string();
-                match vulpini_sysproxy::enable(&server) {
+                let bypass = store.config().proxy.sysproxy_override.clone();
+                match vulpini_sysproxy::enable(&server, &bypass) {
                     Ok(previous) => {
                         // Crash self-heal: keep the ORIGINAL backup if we
                         // already own the setting.
@@ -445,14 +446,15 @@ async fn cmd_delay(path: &std::path::Path, all: bool) -> Result<()> {
         .collect();
 
     println!(
-        "testing {} node(s) via {} ...",
+        "testing {} node(s) via {} (timeout {}s) ...",
         targets.len(),
-        vulpini_core::delay::DEFAULT_PROBE_URL
+        store.config().proxy.probe_url,
+        store.config().proxy.delay_timeout_secs
     );
     let mut results = vulpini_core::delay::test_all(
         targets,
-        vulpini_core::delay::DEFAULT_PROBE_URL.to_string(),
-        vulpini_core::delay::DEFAULT_TIMEOUT,
+        store.config().proxy.probe_url.clone(),
+        std::time::Duration::from_secs(store.config().proxy.delay_timeout_secs),
         8,
     );
     while let Some(result) = results.next().await {

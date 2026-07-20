@@ -40,7 +40,7 @@ mod imp {
         Err(SysProxyError::Unsupported)
     }
 
-    pub fn enable(_server: &str) -> Result<SysProxyStatus, SysProxyError> {
+    pub fn enable(_server: &str, _bypass: &str) -> Result<SysProxyStatus, SysProxyError> {
         Err(SysProxyError::Unsupported)
     }
 
@@ -49,10 +49,11 @@ mod imp {
     }
 }
 
-/// Enable the system proxy pointing at `server` (e.g. "127.0.0.1:7890").
+/// Enable the system proxy pointing at `server` (e.g. "127.0.0.1:7890")
+/// with the given ';'-separated bypass list (ProxyOverride).
 /// Returns the previous state — persist it for [`disable`].
-pub fn enable(server: &str) -> Result<SysProxyStatus, SysProxyError> {
-    imp::enable(server)
+pub fn enable(server: &str, bypass: &str) -> Result<SysProxyStatus, SysProxyError> {
+    imp::enable(server, bypass)
 }
 
 /// Restore the state previously returned by [`enable`].
@@ -79,7 +80,8 @@ mod tests {
     #[test]
     fn enable_disable_roundtrip() {
         let probe = "127.0.0.1:17890";
-        let previous = enable(probe).expect("enable");
+        let bypass = "localhost;127.*;<local>";
+        let previous = enable(probe, bypass).expect("enable");
         let current = status().expect("status");
         assert!(current.enabled);
         assert_eq!(current.server.as_deref(), Some(probe));
