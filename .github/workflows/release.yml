@@ -44,6 +44,5 @@ jobs:
         with:
           files: |
             target/release/bundle/nsis/*.exe
-            target/release/bundle/msi/*.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
