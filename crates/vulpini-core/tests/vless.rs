@@ -99,6 +99,9 @@ async fn start_server_ws(path: &'static str) -> std::net::SocketAddr {
             let (tcp, _) = listener.accept().await.unwrap();
             tokio::spawn(async move {
                 use tokio_tungstenite::tungstenite::http::{Request, Response};
+                // The Err type here (tungstenite's ErrorResponse) is dictated
+                // by accept_hdr_async's callback signature, not our choice.
+                #[allow(clippy::result_large_err)]
                 let callback = move |req: &Request<()>, res: Response<()>| {
                     assert_eq!(req.uri().path(), path, "ws path must match");
                     Ok::<_, Response<Option<String>>>(res)
