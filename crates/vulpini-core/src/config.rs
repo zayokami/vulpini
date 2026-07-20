@@ -33,6 +33,21 @@ pub struct AppConfig {
     /// by stable_key so subscription refreshes keep the history.
     #[serde(default)]
     pub delay_history: std::collections::HashMap<String, u64>,
+    /// True when WE enabled the system proxy (used for restore-on-exit
+    /// and crash self-heal).
+    #[serde(default)]
+    pub system_proxy_enabled: bool,
+    /// Registry state before we enabled the system proxy.
+    #[serde(default)]
+    pub sysproxy_backup: Option<SysProxyBackup>,
+}
+
+/// Mirror of the platform proxy state, persisted so a crash never
+/// strands the user's settings (kept here to avoid a core -> sysproxy dep).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SysProxyBackup {
+    pub enabled: bool,
+    pub server: Option<String>,
 }
 
 fn default_mode() -> Mode {
@@ -55,6 +70,8 @@ impl Default for AppConfig {
             subscriptions: Vec::new(),
             geo: GeoConfig::default(),
             delay_history: std::collections::HashMap::new(),
+            system_proxy_enabled: false,
+            sysproxy_backup: None,
         }
     }
 }

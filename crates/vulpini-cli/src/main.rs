@@ -265,7 +265,53 @@ async fn main() -> Result<()> {
                 Ok(s) => println!("system proxy: {s:?}"),
                 Err(e) => println!("system proxy status unavailable: {e}"),
             },
-            _ => anyhow::bail!("sysproxy on/off is not implemented yet — see milestone M9"),
+            SysproxyAction::On => {
+                let mut store = ConfigStore::load(&cli.config)?;
+                let server = store.config().listen.to_string();
+                match vulpini_sysproxy::enable(&server) {
+                    Ok(previous) => {
+                        // Crash self-heal: keep the ORIGINAL backup if we
+                        // already own the setting.
+                        if !store.config().system_proxy_enabled
+                            || store.config().sysproxy_backup.is_none()
+                        {
+                            store.config_mut().sysproxy_backup =
+                                Some(vulpini_core::config::SysProxyBackup {
+                                    enabled: previous.enabled,
+                                    server: previous.server,
+                                });
+                        }
+                        store.config_mut().system_proxy_enabled = true;
+                        store.save()?;
+                        println!("system proxy enabled -> {server}");
+                    }
+                    Err(e) => println!("failed to enable system proxy: {e}"),
+                }
+            }
+            SysproxyAction::Off => {
+                let mut store = ConfigStore::load(&cli.config)?;
+                let backup = store
+                    .config()
+                    .sysproxy_backup
+                    .clone()
+                    .map(|b| vulpini_sysproxy::SysProxyStatus {
+                        enabled: b.enabled,
+                        server: b.server,
+                    })
+                    .unwrap_or(vulpini_sysproxy::SysProxyStatus {
+                        enabled: false,
+                        server: None,
+                    });
+                match vulpini_sysproxy::disable(&backup) {
+                    Ok(()) => {
+                        store.config_mut().system_proxy_enabled = false;
+                        store.config_mut().sysproxy_backup = None;
+                        store.save()?;
+                        println!("system proxy restored to previous state");
+                    }
+                    Err(e) => println!("failed to disable system proxy: {e}"),
+                }
+            }
         },
     }
     Ok(())

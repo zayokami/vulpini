@@ -3094,6 +3094,7 @@ dependencies = [
 name = "vulpini-sysproxy"
 version = "0.2.0"
 dependencies = [
+ "serde",
  "thiserror",
  "windows-sys 0.60.2",
  "winreg",
