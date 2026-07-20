@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::common::CoreError;
 use crate::config::{ConfigStore, Subscription};
 use crate::node::link::{b64_decode, parse_link};
-use crate::node::model::{Node, NodeConfig};
+use crate::node::model::Node;
 use crate::node::{NodeId, NodeSource};
 
 const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
@@ -24,6 +24,9 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 pub struct UpdateOutcome {
     pub added: usize,
     pub removed: usize,
+    /// Entries skipped because their protocol is unsupported or the entry
+    /// was malformed. Surfaced so users know exactly what they lost.
+    pub skipped: usize,
 }
 
 /// Fetch a subscription body with a browser-ish UA (some providers gate
@@ -38,18 +41,34 @@ pub async fn fetch(url: &str) -> Result<String, CoreError> {
     Ok(response.text().await?)
 }
 
+/// Full parse detail: the nodes plus every skipped entry with its reason.
+pub struct ParseReport {
+    pub nodes: clash::ParsedNodes,
+    pub skipped: Vec<String>,
+}
+
 /// Parse a subscription body into (name, config) pairs, sniffing the
 /// format. Per-line failures are collected, not fatal; a total failure
 /// is an error.
 pub fn parse(body: &str) -> Result<clash::ParsedNodes, CoreError> {
+    let report = parse_report(body)?;
+    for e in &report.skipped {
+        warn!("subscription entry skipped: {e}");
+    }
+    Ok(report.nodes)
+}
+
+/// Like [`parse`] but also returns the per-entry skip reasons so callers
+/// can surface honest counts to users.
+pub fn parse_report(body: &str) -> Result<ParseReport, CoreError> {
     // 1. Clash YAML
     if let Ok((nodes, errors)) = clash::parse(body)
         && !nodes.is_empty()
     {
-        for e in errors {
-            warn!("subscription entry skipped: {e}");
-        }
-        return Ok(nodes);
+        return Ok(ParseReport {
+            nodes,
+            skipped: errors,
+        });
     }
 
     // 2. Plain-text link list (one link per line; stray garbage lines are
@@ -77,24 +96,22 @@ pub fn parse(body: &str) -> Result<clash::ParsedNodes, CoreError> {
     parse_link_lines(&lines)
 }
 
-fn parse_link_lines(lines: &[&str]) -> Result<Vec<(String, NodeConfig)>, CoreError> {
+fn parse_link_lines(lines: &[&str]) -> Result<ParseReport, CoreError> {
     let mut nodes = Vec::new();
-    let mut failures = 0usize;
+    let mut skipped = Vec::new();
     for line in lines {
         match parse_link(line) {
             Ok(node) => nodes.push(node),
-            Err(e) => {
-                failures += 1;
-                warn!("subscription line skipped: {e}");
-            }
+            Err(e) => skipped.push(e.to_string()),
         }
     }
     if nodes.is_empty() {
         Err(CoreError::Protocol(format!(
-            "no usable links in subscription ({failures} failures)"
+            "no usable links in subscription ({} failures)",
+            skipped.len()
         )))
     } else {
-        Ok(nodes)
+        Ok(ParseReport { nodes, skipped })
     }
 }
 
@@ -112,12 +129,17 @@ pub async fn update(store: &mut ConfigStore, sub_id: Uuid) -> Result<UpdateOutco
 
     let parsed = async {
         let body = fetch(&url).await?;
-        parse(&body)
+        parse_report(&body)
     }
     .await;
 
     match parsed {
-        Ok(nodes) => {
+        Ok(report) => {
+            for e in &report.skipped {
+                warn!("subscription entry skipped: {e}");
+            }
+            let skipped = report.skipped.len();
+            let nodes = report.nodes;
             let config = store.config_mut();
             let old: Vec<(NodeId, String)> = config
                 .nodes
@@ -153,8 +175,12 @@ pub async fn update(store: &mut ConfigStore, sub_id: Uuid) -> Result<UpdateOutco
                 sub.node_count = added;
             }
             store.save()?;
-            info!(added, removed, "subscription updated");
-            Ok(UpdateOutcome { added, removed })
+            info!(added, removed, skipped, "subscription updated");
+            Ok(UpdateOutcome {
+                added,
+                removed,
+                skipped,
+            })
         }
         Err(e) => {
             if let Some(sub) = store
@@ -196,6 +222,7 @@ fn unix_now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node::model::NodeConfig;
 
     #[test]
     fn parse_base64_link_list() {

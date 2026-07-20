@@ -98,6 +98,7 @@ struct SubscriptionUpdatedPayload {
     id: String,
     added: usize,
     removed: usize,
+    skipped: usize,
     error: Option<String>,
 }
 
@@ -344,12 +345,14 @@ pub async fn add_subscription(
                 id: id.to_string(),
                 added: o.added,
                 removed: o.removed,
+                skipped: o.skipped,
                 error: None,
             },
             Err(e) => SubscriptionUpdatedPayload {
                 id: id.to_string(),
                 added: 0,
                 removed: 0,
+                skipped: 0,
                 error: Some(e.to_string()),
             },
         };
@@ -434,12 +437,14 @@ pub async fn update_subscription(
                 id: sub_id.to_string(),
                 added: o.added,
                 removed: o.removed,
+                skipped: o.skipped,
                 error: None,
             },
             Err(e) => SubscriptionUpdatedPayload {
                 id: sub_id.to_string(),
                 added: 0,
                 removed: 0,
+                skipped: 0,
                 error: Some(e.to_string()),
             },
         };

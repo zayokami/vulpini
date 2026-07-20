@@ -187,7 +187,7 @@ async fn main() -> Result<()> {
                     vulpini_core::node::subscription::add_subscription(&mut store, &name, &url)?;
                 println!("subscription added: {name}");
                 match vulpini_core::node::subscription::update(&mut store, id).await {
-                    Ok(o) => println!("fetched: {} nodes", o.added),
+                    Ok(o) => println!("fetched: {} nodes, {} skipped", o.added, o.skipped),
                     Err(e) => println!("warning: initial fetch failed: {e}"),
                 }
             }
@@ -241,10 +241,11 @@ async fn main() -> Result<()> {
                 for id in ids {
                     match vulpini_core::node::subscription::update(&mut store, id).await {
                         Ok(o) => println!(
-                            "updated {}: +{} -{}",
+                            "updated {}: +{} -{} ({} skipped)",
                             &id.simple().to_string()[..8],
                             o.added,
-                            o.removed
+                            o.removed,
+                            o.skipped
                         ),
                         Err(e) => println!("failed {}: {e}", &id.simple().to_string()[..8]),
                     }

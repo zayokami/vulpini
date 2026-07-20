@@ -74,6 +74,7 @@ export interface SubscriptionUpdatedPayload {
   id: string;
   added: number;
   removed: number;
+  skipped: number;
   error: string | null;
 }
 

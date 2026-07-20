@@ -9,6 +9,7 @@ import {
   type Mode,
   type NodeView,
   type StatsSnapshot,
+  type SubscriptionUpdatedPayload,
   type SubscriptionView,
   type SysProxyView,
 } from './api';
@@ -179,6 +180,15 @@ export const useApp = create<AppState>((set, get) => ({
       useDelay.getState().handleResult(payload);
       void get().refreshNodes();
     });
-    await onEvent<unknown>('subscription:updated', () => void get().refreshSubs());
+    await onEvent<SubscriptionUpdatedPayload>('subscription:updated', (payload) => {
+      void get().refreshSubs();
+      if (payload.error) {
+        set({ notice: `订阅更新失败: ${payload.error}` });
+      } else if (payload.skipped > 0) {
+        set({
+          notice: `已导入 ${payload.added} 个节点，${payload.skipped} 条因协议不支持被跳过（详见日志）`,
+        });
+      }
+    });
   },
 }));

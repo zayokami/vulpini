@@ -12,7 +12,7 @@ use crate::node::model::{
 #[derive(Debug, Deserialize)]
 struct ClashDocument {
     #[serde(default)]
-    proxies: Vec<ClashProxy>,
+    proxies: Vec<serde_yaml_ng::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,6 +91,11 @@ struct WsHeaders {
 pub type ParsedNodes = Vec<(String, NodeConfig)>;
 
 /// Parse a Clash YAML document. Returns (nodes, per-entry errors).
+///
+/// Per-entry fault isolation: the proxies list is first decoded as opaque
+/// values, then each entry is converted independently. Unknown protocols
+/// (hysteria2, tuic, ssr, ...) and malformed entries become error entries
+/// — they never sink the whole subscription.
 pub fn parse(body: &str) -> Result<(ParsedNodes, Vec<String>), CoreError> {
     let doc: ClashDocument = serde_yaml_ng::from_str(body)
         .map_err(|e| CoreError::Protocol(format!("not a clash yaml document: {e}")))?;
@@ -100,13 +105,36 @@ pub fn parse(body: &str) -> Result<(ParsedNodes, Vec<String>), CoreError> {
 
     let mut nodes = Vec::new();
     let mut errors = Vec::new();
-    for proxy in doc.proxies {
-        match convert(proxy) {
+    for (index, entry) in doc.proxies.into_iter().enumerate() {
+        match convert_entry(entry) {
             Ok(node) => nodes.push(node),
-            Err(e) => errors.push(e),
+            Err(e) => errors.push(format!("#{index}: {e}")),
         }
     }
     Ok((nodes, errors))
+}
+
+/// Convert one proxies entry. The `type` field decides the converter;
+/// every failure mode is entry-scoped.
+fn convert_entry(entry: serde_yaml_ng::Value) -> Result<(String, NodeConfig), String> {
+    let name = entry
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("<unnamed>")
+        .to_string();
+    let proxy_type = entry
+        .get("type")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("{name}: missing 'type' field"))?
+        .to_ascii_lowercase();
+
+    if !matches!(proxy_type.as_str(), "ss" | "trojan" | "vless" | "vmess") {
+        return Err(format!("{name}: protocol '{proxy_type}' is not supported"));
+    }
+
+    let proxy: ClashProxy = serde_yaml_ng::from_value(entry)
+        .map_err(|e| format!("{name}: bad {proxy_type} entry: {e}"))?;
+    convert(proxy)
 }
 
 fn convert(proxy: ClashProxy) -> Result<(String, NodeConfig), String> {
@@ -319,5 +347,80 @@ proxies:
         assert_eq!(nodes.len(), 1);
         assert_eq!(errors.len(), 1);
         assert!(errors[0].contains("rc4-md5"));
+    }
+
+    #[test]
+    fn unknown_protocols_are_isolated_per_entry() {
+        // The real-world case: subscriptions mixing supported and
+        // unsupported protocols must import the supported ones.
+        let yaml = r#"
+proxies:
+  - name: "hk ss"
+    type: ss
+    server: hk.example.com
+    port: 8388
+    cipher: aes-256-gcm
+    password: pw
+  - name: "hy2 node"
+    type: hysteria2
+    server: hy2.example.com
+    port: 443
+    password: pw
+  - name: "tuic node"
+    type: tuic
+    server: tuic.example.com
+    port: 443
+    uuid: b831381d-6324-4d53-ad4f-8cda48b30811
+  - name: "ssr node"
+    type: ssr
+    server: ssr.example.com
+    port: 8388
+  - name: "us vless"
+    type: vless
+    server: us.example.com
+    port: 443
+    uuid: b831381d-6324-4d53-ad4f-8cda48b30811
+    tls: true
+"#;
+        let (nodes, errors) = parse(yaml).unwrap();
+        assert_eq!(nodes.len(), 2, "ss + vless must survive");
+        assert!(matches!(nodes[0].1, NodeConfig::Shadowsocks(_)));
+        assert!(matches!(nodes[1].1, NodeConfig::Vless(_)));
+        assert_eq!(errors.len(), 3);
+        assert!(errors[0].contains("hysteria2"), "got: {}", errors[0]);
+        assert!(errors[1].contains("tuic"), "got: {}", errors[1]);
+        assert!(errors[2].contains("ssr"), "got: {}", errors[2]);
+        // Errors carry the node name for user visibility.
+        assert!(errors[0].contains("hy2 node"));
+    }
+
+    #[test]
+    fn malformed_known_entry_isolated() {
+        let yaml = r#"
+proxies:
+  - name: "broken vless"
+    type: vless
+    server: x.example.com
+    port: 443
+    uuid: not-a-uuid
+  - name: "good trojan"
+    type: trojan
+    server: ok.example.com
+    port: 443
+    password: pw
+  - "just a string, not a map"
+"#;
+        let (nodes, errors) = parse(yaml).unwrap();
+        assert_eq!(nodes.len(), 1);
+        assert!(matches!(nodes[0].1, NodeConfig::Trojan(_)));
+        assert_eq!(errors.len(), 2);
+        assert!(errors[0].contains("broken vless"));
+    }
+
+    #[test]
+    fn whole_document_failures_still_fail() {
+        assert!(parse("proxies: []").is_err());
+        assert!(parse("not: a clash doc").is_err());
+        assert!(parse("{{{{").is_err());
     }
 }
