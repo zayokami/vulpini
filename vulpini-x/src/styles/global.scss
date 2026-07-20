@@ -83,6 +83,7 @@ textarea {
 .titlebar__controls {
   display: flex;
   height: 100%;
+  flex-shrink: 0;
 }
 
 .titlebar__btn {
@@ -238,27 +239,41 @@ textarea {
 }
 
 .page {
-  max-width: 960px;
   padding: 0 20px 24px;
+
+  @media (max-width: 640px) {
+    padding: 0 12px 20px;
+  }
 }
 
 .page__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 58px;
+  gap: 12px;
+  min-height: 58px;
+  padding: 8px 0;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .page__title {
   font-size: tokens.$fs-title;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .page__actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+
+  .input {
+    width: auto;
+    min-width: 90px;
+  }
 }
 
 .page__body {
@@ -713,7 +728,7 @@ textarea.input {
 // ── Subscriptions page ─────────────────────────────────────────────────
 .sub-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   gap: 12px;
 }
 
