@@ -37,8 +37,13 @@ jobs:
         shell: bash
         run: "! cargo tree --workspace | grep -q aws-lc"
 
+      # cargo-deny-action is a Linux-only container action; install the
+      # prebuilt binary instead (works on windows runners).
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+
       - name: License audit
-        uses: EmbarkStudios/cargo-deny-action@v2
+        run: cargo deny check licenses
 
   frontend:
     runs-on: windows-latest
