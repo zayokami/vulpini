@@ -48,7 +48,8 @@ interface AppState {
   updateGeo: () => Promise<void>;
   clearNotice: () => void;
 
-  init: () => Promise<void>;
+  /** Wires event listeners and returns an unlisten-all cleanup. */
+  init: () => Promise<() => void>;
 }
 
 async function guarded(fn: () => Promise<void>): Promise<void> {
@@ -69,6 +70,11 @@ export const useApp = create<AppState>((set, get) => {
       set({ notice: `${label}失败: ${e}` });
     }
   };
+
+  // React StrictMode mounts effects twice in dev; wiring must be
+  // idempotent or every event listener gets registered twice and each
+  // log line appears duplicated.
+  let wired = false;
 
   return {
     status: null,
@@ -197,27 +203,36 @@ export const useApp = create<AppState>((set, get) => {
     clearNotice: () => set({ notice: null }),
 
     init: async () => {
+      if (wired) return () => {};
+      wired = true;
       await get().refreshAll();
-      await onEvent<StatsSnapshot>('stats:tick', (stats) => set({ stats }));
-      await onEvent<LogEvent>('log:line', (event) =>
-        set((s) => ({ logs: [event, ...s.logs].slice(0, 500) })),
-      );
-      await onEvent<unknown>('core:status', () => void get().refreshStatus());
-      await onEvent<unknown>('nodes:changed', () => void get().refreshNodes());
-      await onEvent<DelayResultPayload>('delay:result', (payload) => {
-        useDelay.getState().handleResult(payload);
-        void get().refreshNodes();
-      });
-      await onEvent<SubscriptionUpdatedPayload>('subscription:updated', (payload) => {
-        void get().refreshSubs();
-        if (payload.error) {
-          set({ notice: `订阅更新失败: ${payload.error}` });
-        } else if (payload.skipped > 0) {
-          set({
-            notice: `已导入 ${payload.added} 个节点，${payload.skipped} 条因协议不支持被跳过（详见日志）`,
-          });
-        }
-      });
+      const unlisteners = await Promise.all([
+        onEvent<StatsSnapshot>('stats:tick', (stats) => set({ stats })),
+        onEvent<LogEvent>('log:line', (event) =>
+          set((s) => ({ logs: [event, ...s.logs].slice(0, 500) })),
+        ),
+        onEvent<unknown>('core:status', () => void get().refreshStatus()),
+        onEvent<unknown>('nodes:changed', () => void get().refreshNodes()),
+        onEvent<DelayResultPayload>('delay:result', (payload) => {
+          useDelay.getState().handleResult(payload);
+          void get().refreshNodes();
+        }),
+        onEvent<SubscriptionUpdatedPayload>('subscription:updated', (payload) => {
+          void get().refreshSubs();
+          if (payload.error) {
+            set({ notice: `订阅更新失败: ${payload.error}` });
+          } else if (payload.skipped > 0) {
+            set({
+              notice: `已导入 ${payload.added} 个节点，${payload.skipped} 条因协议不支持被跳过（详见日志）`,
+            });
+          }
+        }),
+      ]);
+      // Return an unlisten-all cleanup for the owning effect.
+      return () => {
+        wired = false;
+        unlisteners.forEach((unlisten) => unlisten());
+      };
     },
   };
 });

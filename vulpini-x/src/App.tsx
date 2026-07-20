@@ -21,7 +21,9 @@ export default function App() {
   const clearNotice = useApp((s) => s.clearNotice);
 
   useEffect(() => {
-    void init();
+    let cleanup: (() => void) | undefined;
+    void init().then((c) => (cleanup = c));
+    return () => cleanup?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
